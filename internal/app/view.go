@@ -15,6 +15,9 @@ import (
 // View renders the current UI view.
 func (m Model) View() string {
 	if !m.ready {
+		if m.err != nil {
+			return m.renderStartupError()
+		}
 		return "Loading..."
 	}
 
@@ -44,6 +47,42 @@ func (m Model) View() string {
 		content += m.renderDialog()
 	}
 	return content
+}
+
+func (m Model) renderStartupError() string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("Error: %v\n\n", m.err))
+
+	kind, _ := db.DetectDriver(m.dbPath)
+	switch kind {
+	case db.KindSQLite:
+		b.WriteString("SQLite quick checks:\n")
+		b.WriteString("- Verify the file path exists and is readable\n")
+		b.WriteString("- Ensure file permissions allow read/write access\n\n")
+	case db.KindMySQL:
+		b.WriteString("MySQL quick checks:\n")
+		b.WriteString("- Ensure MySQL is running and listening on the expected host/port\n")
+		b.WriteString("- If using localhost, try 127.0.0.1 to avoid IPv6/::1 issues\n")
+		b.WriteString("- Verify database/user credentials and grants\n\n")
+	case db.KindPostgreSQL:
+		b.WriteString("PostgreSQL quick checks:\n")
+		b.WriteString("- Ensure PostgreSQL is running and reachable on the configured host/port\n")
+		b.WriteString("- If using localhost, try 127.0.0.1 to avoid IPv6/::1 issues\n")
+		b.WriteString("- Verify database/user credentials and pg_hba.conf access rules\n\n")
+	case db.KindMongoDB:
+		b.WriteString("MongoDB quick checks:\n")
+		b.WriteString("- Ensure MongoDB is running and reachable on the configured host/port\n")
+		b.WriteString("- Verify auth database, username/password, and connection URI options\n")
+		b.WriteString("- Check TLS/SSL settings if your server requires secure transport\n\n")
+	case db.KindRedis:
+		b.WriteString("Redis quick checks:\n")
+		b.WriteString("- Ensure Redis is running and reachable on the configured host/port\n")
+		b.WriteString("- Verify username/password and ACL permissions if auth is enabled\n")
+		b.WriteString("- Check TLS settings when using rediss://\n\n")
+	}
+
+	b.WriteString("Press r to retry, q or esc to quit.\n")
+	return b.String()
 }
 
 // --- Header and pagination ---
@@ -202,6 +241,7 @@ func (m Model) renderHelp() string {
 			"",
 			theme.StyledBold("GLOBAL", cl.Accent),
 			theme.Styled("  T        Cycle theme (8 themes)", cl.White),
+			theme.Styled("  M        Toggle mouse capture / terminal select", cl.White),
 			theme.Styled("  ?        This help", cl.White),
 			theme.Styled("  q        Quit", cl.White),
 			theme.Styled("  esc      Go back / cancel", cl.White),
@@ -220,6 +260,23 @@ func (m Model) renderTables() string {
 	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(cl.White)).Bold(true).Render(
 		fmt.Sprintf(" Tables (%d)", len(m.tables))))
 	b.WriteString("\n\n")
+	if len(m.tables) == 0 {
+		switch m.driver.Kind() {
+		case db.KindMongoDB:
+			b.WriteString(theme.Styled(" No collections found in this database.", cl.Warn))
+			b.WriteString("\n")
+			b.WriteString(theme.Styled(" Create/import data first, then press r to reopen connection.", cl.Dim))
+			b.WriteString("\n\n")
+		case db.KindRedis:
+			b.WriteString(theme.Styled(" No keys found in this Redis database.", cl.Warn))
+			b.WriteString("\n")
+			b.WriteString(theme.Styled(" Add keys first, then press r to reopen connection.", cl.Dim))
+			b.WriteString("\n\n")
+		default:
+			b.WriteString(theme.Styled(" No tables found.", cl.Warn))
+			b.WriteString("\n\n")
+		}
+	}
 	for i, name := range m.tables {
 		prefix := "  "
 		style := lipgloss.NewStyle().Width(m.width - 4)
@@ -231,7 +288,7 @@ func (m Model) renderTables() string {
 		b.WriteString(style.Render(fmt.Sprintf("%s%-30s %s", prefix, name, theme.Styled(fmt.Sprintf("(%d rows)", rc), cl.Dim))))
 		b.WriteString("\n")
 	}
-	b.WriteString(theme.HelpStyle(cl).Render(" ↑↓ navigate • enter data • s schema • x drop • F flush • D stats • / sql • ? help • q quit"))
+	b.WriteString(theme.HelpStyle(cl).Render(" ↑↓ navigate • enter data • s schema • x drop • F flush • D stats • / sql • r reload • ? help • q quit"))
 	return b.String()
 }
 
@@ -404,11 +461,36 @@ func (m Model) renderStats() string {
 func (m Model) renderQuery() string {
 	var b strings.Builder
 	cl := m.c()
-	b.WriteString(m.header("SQL Query"))
+	title := "SQL Query"
+	prompt := " Enter SQL and press Enter to execute | Up/Down: history"
+	ctxLabel := ""
+	if strings.TrimSpace(m.activeTbl) != "" {
+		ctxLabel = fmt.Sprintf(" — %s", m.activeTbl)
+	}
+	if m.driver != nil {
+		switch m.driver.Kind() {
+		case db.KindMongoDB:
+			title = "Mongo Query"
+			prompt = " Use: collections | find <collection> [json] | count <collection> [json] | {json}"
+		case db.KindRedis:
+			title = "Redis Command"
+			prompt = " Enter Redis command (GET/SET/DEL/KEYS/HGETALL/LRANGE/SMEMBERS/ZRANGE)"
+		}
+	}
+	b.WriteString(m.header(title + ctxLabel))
 	b.WriteString("\n")
-	b.WriteString(theme.WarnStyle(cl).Render(" Enter SQL and press Enter to execute | Up/Down: history"))
+	b.WriteString(theme.WarnStyle(cl).Render(prompt))
 	b.WriteString("\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(cl.White)).Render(fmt.Sprintf(" > %s█", m.query)))
+	qr := []rune(m.query)
+	cursor := m.queryCursor
+	if cursor < 0 {
+		cursor = 0
+	}
+	if cursor > len(qr) {
+		cursor = len(qr)
+	}
+	queryWithCursor := string(qr[:cursor]) + "█" + string(qr[cursor:])
+	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(cl.White)).Render(fmt.Sprintf(" > %s", queryWithCursor)))
 	b.WriteString("\n")
 	if m.err != nil {
 		b.WriteString(theme.ErrStyle(cl).Render(fmt.Sprintf(" %v", m.err)))
@@ -551,7 +633,7 @@ func (m Model) renderDetail() string {
 			}
 			nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(cl.Accent)).Bold(true).Width(maxNameW + 2)
 			valStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(cl.White))
-			b.WriteString(nameStyle.Render(col+" :"))
+			b.WriteString(nameStyle.Render(col + " :"))
 			b.WriteString(valStyle.Render(" " + val))
 			b.WriteString("\n")
 		}

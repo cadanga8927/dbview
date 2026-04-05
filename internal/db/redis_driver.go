@@ -5,6 +5,9 @@ import (
 	"database/sql"
 	"fmt"
 	"sort"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -255,4 +258,290 @@ func (d *RedisDriver) RowCount(ctx context.Context, table string) (int, error) {
 		}
 	}
 	return count, nil
+}
+
+// InsertEntry inserts one logical row into a Redis type view.
+func (d *RedisDriver) InsertEntry(ctx context.Context, redisType string, cols []string, vals []string) (int64, error) {
+	if len(cols) == 0 {
+		return 0, fmt.Errorf("no columns provided")
+	}
+
+	row := make(map[string]string, len(cols))
+	for i, c := range cols {
+		if i < len(vals) {
+			row[c] = strings.TrimSpace(vals[i])
+		} else {
+			row[c] = "NULL"
+		}
+	}
+
+	key := row["key"]
+	if isNullish(key) {
+		return 0, fmt.Errorf("key is required")
+	}
+
+	ttlSec := int64(-1)
+	if ttlRaw, ok := row["ttl"]; ok && !isNullish(ttlRaw) {
+		n, err := strconv.ParseInt(ttlRaw, 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("invalid ttl value: %q", ttlRaw)
+		}
+		ttlSec = n
+	}
+
+	var affected int64
+	switch redisType {
+	case "string":
+		value := row["value"]
+		if isNullish(value) {
+			value = ""
+		}
+		if err := d.client.Set(ctx, key, value, 0).Err(); err != nil {
+			return 0, err
+		}
+		affected = 1
+
+	case "hash":
+		field := row["field"]
+		if isNullish(field) {
+			return 0, fmt.Errorf("field is required for hash")
+		}
+		value := row["value"]
+		if isNullish(value) {
+			value = ""
+		}
+		n, err := d.client.HSet(ctx, key, field, value).Result()
+		if err != nil {
+			return 0, err
+		}
+		affected = n
+
+	case "list":
+		value := row["value"]
+		if isNullish(value) {
+			value = ""
+		}
+		n, err := d.client.RPush(ctx, key, value).Result()
+		if err != nil {
+			return 0, err
+		}
+		if n > 0 {
+			affected = 1
+		}
+
+	case "set":
+		member := row["member"]
+		if isNullish(member) {
+			return 0, fmt.Errorf("member is required for set")
+		}
+		n, err := d.client.SAdd(ctx, key, member).Result()
+		if err != nil {
+			return 0, err
+		}
+		affected = n
+
+	case "zset":
+		member := row["member"]
+		if isNullish(member) {
+			return 0, fmt.Errorf("member is required for zset")
+		}
+		scoreRaw := row["score"]
+		score := 0.0
+		if !isNullish(scoreRaw) {
+			f, err := strconv.ParseFloat(scoreRaw, 64)
+			if err != nil {
+				return 0, fmt.Errorf("invalid score value: %q", scoreRaw)
+			}
+			score = f
+		}
+		n, err := d.client.ZAdd(ctx, key, redis.Z{Score: score, Member: member}).Result()
+		if err != nil {
+			return 0, err
+		}
+		affected = n
+
+	default:
+		return 0, fmt.Errorf("unsupported redis type: %s", redisType)
+	}
+
+	if ttlSec >= 0 {
+		if err := d.client.Expire(ctx, key, time.Duration(ttlSec)*time.Second).Err(); err != nil {
+			return affected, err
+		}
+	}
+
+	if affected < 1 {
+		affected = 1
+	}
+
+	return affected, nil
+}
+
+func isNullish(s string) bool {
+	v := strings.TrimSpace(s)
+	return v == "" || strings.EqualFold(v, "NULL")
+}
+
+// ExecuteQuery supports Redis command execution for the query view.
+// Supported commands include GET, SET, DEL, KEYS, TYPE, TTL,
+// HGETALL, LRANGE, SMEMBERS, and ZRANGE.
+func (d *RedisDriver) ExecuteQuery(ctx context.Context, query string) (cols []string, rows [][]string, affected int64, err error) {
+	parts := strings.Fields(strings.TrimSpace(query))
+	if len(parts) == 0 {
+		return nil, nil, 0, fmt.Errorf("empty query")
+	}
+
+	cmd := strings.ToUpper(parts[0])
+
+	switch cmd {
+	case "GET":
+		if len(parts) != 2 {
+			return nil, nil, 0, fmt.Errorf("usage: GET <key>")
+		}
+		v, e := d.client.Get(ctx, parts[1]).Result()
+		if e != nil {
+			return nil, nil, 0, e
+		}
+		return []string{"value"}, [][]string{{v}}, 1, nil
+
+	case "SET":
+		if len(parts) < 3 {
+			return nil, nil, 0, fmt.Errorf("usage: SET <key> <value>")
+		}
+		if e := d.client.Set(ctx, parts[1], strings.Join(parts[2:], " "), 0).Err(); e != nil {
+			return nil, nil, 0, e
+		}
+		return nil, nil, 1, nil
+
+	case "DEL":
+		if len(parts) < 2 {
+			return nil, nil, 0, fmt.Errorf("usage: DEL <key> [key ...]")
+		}
+		keys := make([]string, 0, len(parts)-1)
+		keys = append(keys, parts[1:]...)
+		n, e := d.client.Del(ctx, keys...).Result()
+		if e != nil {
+			return nil, nil, 0, e
+		}
+		return nil, nil, n, nil
+
+	case "KEYS":
+		if len(parts) != 2 {
+			return nil, nil, 0, fmt.Errorf("usage: KEYS <pattern>")
+		}
+		keys, e := d.client.Keys(ctx, parts[1]).Result()
+		if e != nil {
+			return nil, nil, 0, e
+		}
+		rows := make([][]string, 0, len(keys))
+		for _, k := range keys {
+			rows = append(rows, []string{k})
+		}
+		return []string{"key"}, rows, int64(len(rows)), nil
+
+	case "TYPE":
+		if len(parts) != 2 {
+			return nil, nil, 0, fmt.Errorf("usage: TYPE <key>")
+		}
+		t, e := d.client.Type(ctx, parts[1]).Result()
+		if e != nil {
+			return nil, nil, 0, e
+		}
+		return []string{"type"}, [][]string{{t}}, 1, nil
+
+	case "TTL":
+		if len(parts) != 2 {
+			return nil, nil, 0, fmt.Errorf("usage: TTL <key>")
+		}
+		ttl, e := d.client.TTL(ctx, parts[1]).Result()
+		if e != nil {
+			return nil, nil, 0, e
+		}
+		return []string{"ttl"}, [][]string{{fmt.Sprintf("%d", int64(ttl.Seconds()))}}, 1, nil
+
+	case "HGETALL":
+		if len(parts) != 2 {
+			return nil, nil, 0, fmt.Errorf("usage: HGETALL <key>")
+		}
+		m, e := d.client.HGetAll(ctx, parts[1]).Result()
+		if e != nil {
+			return nil, nil, 0, e
+		}
+		keys := make([]string, 0, len(m))
+		for k := range m {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		rows := make([][]string, 0, len(keys))
+		for _, k := range keys {
+			rows = append(rows, []string{k, m[k]})
+		}
+		return []string{"field", "value"}, rows, int64(len(rows)), nil
+
+	case "LRANGE":
+		if len(parts) != 4 {
+			return nil, nil, 0, fmt.Errorf("usage: LRANGE <key> <start> <stop>")
+		}
+		start, e1 := strconv.ParseInt(parts[2], 10, 64)
+		stop, e2 := strconv.ParseInt(parts[3], 10, 64)
+		if e1 != nil || e2 != nil {
+			return nil, nil, 0, fmt.Errorf("invalid LRANGE bounds")
+		}
+		vals, e := d.client.LRange(ctx, parts[1], start, stop).Result()
+		if e != nil {
+			return nil, nil, 0, e
+		}
+		rows := make([][]string, 0, len(vals))
+		for i, v := range vals {
+			rows = append(rows, []string{fmt.Sprintf("%d", i), v})
+		}
+		return []string{"index", "value"}, rows, int64(len(rows)), nil
+
+	case "SMEMBERS":
+		if len(parts) != 2 {
+			return nil, nil, 0, fmt.Errorf("usage: SMEMBERS <key>")
+		}
+		vals, e := d.client.SMembers(ctx, parts[1]).Result()
+		if e != nil {
+			return nil, nil, 0, e
+		}
+		rows := make([][]string, 0, len(vals))
+		for _, v := range vals {
+			rows = append(rows, []string{v})
+		}
+		return []string{"member"}, rows, int64(len(rows)), nil
+
+	case "ZRANGE":
+		if len(parts) < 4 {
+			return nil, nil, 0, fmt.Errorf("usage: ZRANGE <key> <start> <stop> [WITHSCORES]")
+		}
+		start, e1 := strconv.ParseInt(parts[2], 10, 64)
+		stop, e2 := strconv.ParseInt(parts[3], 10, 64)
+		if e1 != nil || e2 != nil {
+			return nil, nil, 0, fmt.Errorf("invalid ZRANGE bounds")
+		}
+		withScores := len(parts) > 4 && strings.EqualFold(parts[4], "WITHSCORES")
+		if withScores {
+			zs, e := d.client.ZRangeWithScores(ctx, parts[1], start, stop).Result()
+			if e != nil {
+				return nil, nil, 0, e
+			}
+			rows := make([][]string, 0, len(zs))
+			for _, z := range zs {
+				rows = append(rows, []string{fmt.Sprintf("%v", z.Member), fmt.Sprintf("%v", z.Score)})
+			}
+			return []string{"member", "score"}, rows, int64(len(rows)), nil
+		}
+		vals, e := d.client.ZRange(ctx, parts[1], start, stop).Result()
+		if e != nil {
+			return nil, nil, 0, e
+		}
+		rows := make([][]string, 0, len(vals))
+		for _, v := range vals {
+			rows = append(rows, []string{v})
+		}
+		return []string{"member"}, rows, int64(len(rows)), nil
+	}
+
+	return nil, nil, 0, fmt.Errorf("unsupported Redis command: %s", cmd)
 }

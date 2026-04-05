@@ -40,6 +40,58 @@ func trimLastWord(s string) string {
 	return string(r[:end])
 }
 
+func runeLen(s string) int {
+	return len([]rune(s))
+}
+
+func clampCursor(cursor, n int) int {
+	if cursor < 0 {
+		return 0
+	}
+	if cursor > n {
+		return n
+	}
+	return cursor
+}
+
+func insertAtRunePos(s string, pos int, text string) string {
+	r := []rune(s)
+	p := clampCursor(pos, len(r))
+	ins := []rune(text)
+	out := make([]rune, 0, len(r)+len(ins))
+	out = append(out, r[:p]...)
+	out = append(out, ins...)
+	out = append(out, r[p:]...)
+	return string(out)
+}
+
+func deleteRuneBeforePos(s string, pos int) (string, int) {
+	r := []rune(s)
+	p := clampCursor(pos, len(r))
+	if p == 0 {
+		return s, 0
+	}
+	out := append(r[:p-1], r[p:]...)
+	return string(out), p - 1
+}
+
+func deleteWordBeforePos(s string, pos int) (string, int) {
+	r := []rune(s)
+	p := clampCursor(pos, len(r))
+	if p == 0 {
+		return s, 0
+	}
+	start := p
+	for start > 0 && unicode.IsSpace(r[start-1]) {
+		start--
+	}
+	for start > 0 && !unicode.IsSpace(r[start-1]) {
+		start--
+	}
+	out := append(r[:start], r[p:]...)
+	return string(out), start
+}
+
 // Update handles the top-level Bubble Tea update dispatch.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -72,6 +124,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, doTick()
 
 	case tea.KeyMsg:
+		if !m.ready && m.err != nil {
+			switch msg.String() {
+			case "r", "R":
+				nm := New(m.dbPath)
+				nm.width = m.width
+				nm.height = m.height
+				nm.theme = m.theme
+				return nm, nil
+			case "q", "esc", "ctrl+c":
+				if m.cancel != nil {
+					m.cancel()
+				}
+				if m.driver != nil {
+					m.driver.Close()
+				}
+				return m, tea.Quit
+			}
+		}
 		if m.helpVis {
 			m.helpVis = false
 			return m, nil
@@ -107,6 +177,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.String() == "?" {
 			m.helpVis = true
 			return m, nil
+		}
+		if msg.String() == "M" {
+			m.mouseOn = !m.mouseOn
+			if m.mouseOn {
+				m = m.setStatus("Mouse mode enabled")
+				return m, tea.EnableMouseCellMotion
+			}
+			m = m.setStatus("Mouse mode disabled: terminal selection enabled")
+			return m, tea.DisableMouse
 		}
 		// Q opens query log from any view
 		if msg.String() == "Q" {
@@ -481,6 +560,26 @@ func (m Model) updateTables(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "D":
 		m.view = ViewStats
+	case "r", "R":
+		tables, err := m.driver.ListTables(m.ctx)
+		if err != nil {
+			m.err = err
+			return m, nil
+		}
+		m.tables = tables
+		m.schema = make(map[string][]db.ColInfo)
+		m.fks = make(map[string][]db.FKInfo)
+		for _, name := range m.tables {
+			m.schema[name], _ = m.driver.LoadSchema(m.ctx, name)
+			m.fks[name], _ = m.driver.LoadFKs(m.ctx, name)
+		}
+		if m.cursor >= len(m.tables) {
+			m.cursor = len(m.tables) - 1
+		}
+		if m.cursor < 0 {
+			m.cursor = 0
+		}
+		m = m.setStatus(fmt.Sprintf("Reloaded %d table(s)", len(m.tables)))
 	case "F":
 		if len(m.tables) > 0 {
 			tbl := m.tables[m.cursor]
@@ -514,6 +613,7 @@ func (m Model) updateTables(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "/":
 		m.view = ViewQuery
 		m.query = ""
+		m.queryCursor = 0
 		m.err = nil
 	}
 	return m, nil
@@ -532,6 +632,7 @@ func (m Model) updateData(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "/":
 		m.view = ViewQuery
 		m.query = ""
+		m.queryCursor = 0
 		m.err = nil
 		return m, nil
 	case "ctrl+f":
@@ -611,6 +712,14 @@ func (m Model) updateData(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "d":
 		if m.activeTbl != "" && m.activeTbl != "query" {
+			if m.driver != nil {
+				switch m.driver.Kind() {
+				case db.KindMongoDB:
+					return m.setStatus("Duplicate row is not supported for MongoDB yet"), nil
+				case db.KindRedis:
+					return m.setStatus("Duplicate row is not supported for Redis yet"), nil
+				}
+			}
 			cursor := m.dataTbl.Cursor()
 			if cursor >= len(m.allRows) {
 				return m, nil
@@ -675,6 +784,14 @@ func (m Model) updateData(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "a":
 		if m.activeTbl != "" && m.activeTbl != "query" && len(m.dataCols) > 0 {
+			if m.driver != nil {
+				switch m.driver.Kind() {
+				case db.KindMongoDB:
+					return m.setStatus("Add row is not supported for MongoDB yet"), nil
+				case db.KindRedis:
+					return m.setStatus("Add row is not supported for Redis yet"), nil
+				}
+			}
 			ph := make([]string, len(m.dataCols))
 			for i := range ph {
 				ph[i] = "NULL"
@@ -796,22 +913,39 @@ func (m Model) updateQuery(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "up":
+		if len(m.queryHist) == 0 {
+			return m, nil
+		}
+		if m.qHistIdx > 0 {
+			m.qHistIdx--
+		}
 		if m.qHistIdx >= 0 && m.qHistIdx < len(m.queryHist) {
 			m.query = m.queryHist[m.qHistIdx]
-			m.qHistIdx++
-		} else {
-			if len(m.queryHist) > 0 {
-				m.qHistIdx = len(m.queryHist)
-				m.query = m.queryHist[len(m.queryHist)-1]
-			}
+			m.queryCursor = runeLen(m.query)
 		}
 		return m, nil
 	case "down":
-		if len(m.queryHist) > 0 && m.qHistIdx > 0 {
-			m.qHistIdx--
-			if m.qHistIdx >= 0 && m.qHistIdx < len(m.queryHist) {
-				m.query = m.queryHist[m.qHistIdx]
-			}
+		if len(m.queryHist) == 0 {
+			return m, nil
+		}
+		if m.qHistIdx < len(m.queryHist)-1 {
+			m.qHistIdx++
+			m.query = m.queryHist[m.qHistIdx]
+			m.queryCursor = runeLen(m.query)
+		} else {
+			m.qHistIdx = len(m.queryHist)
+			m.query = ""
+			m.queryCursor = 0
+		}
+		return m, nil
+	case "left":
+		if m.queryCursor > 0 {
+			m.queryCursor--
+		}
+		return m, nil
+	case "right":
+		if m.queryCursor < runeLen(m.query) {
+			m.queryCursor++
 		}
 		return m, nil
 	case "enter":
@@ -831,16 +965,17 @@ func (m Model) updateQuery(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.execQuery(q)
 		}
 	case "backspace":
-		if len(m.query) > 0 {
-			m.query = trimLastRune(m.query)
+		if runeLen(m.query) > 0 {
+			m.query, m.queryCursor = deleteRuneBeforePos(m.query, m.queryCursor)
 		}
 	case "alt+backspace", "ctrl+w":
-		if len(m.query) > 0 {
-			m.query = trimLastWord(m.query)
+		if runeLen(m.query) > 0 {
+			m.query, m.queryCursor = deleteWordBeforePos(m.query, m.queryCursor)
 		}
 	default:
 		if text := keyText(msg); text != "" && text != "/" {
-			m.query += text
+			m.query = insertAtRunePos(m.query, m.queryCursor, text)
+			m.queryCursor += runeLen(text)
 		}
 	}
 	return m, nil

@@ -3,12 +3,15 @@ package db
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -265,4 +268,173 @@ func (d *MongoDriver) RowCount(ctx context.Context, table string) (int, error) {
 		return 0, err
 	}
 	return int(n64), nil
+}
+
+// InsertDocument inserts one document into a MongoDB collection.
+// Values are mapped by columns and loosely parsed from strings.
+func (d *MongoDriver) InsertDocument(ctx context.Context, collection string, cols []string, vals []string) (int64, error) {
+	if len(cols) == 0 {
+		return 0, fmt.Errorf("no columns provided")
+	}
+
+	doc := bson.M{}
+	for i, col := range cols {
+		value := "NULL"
+		if i < len(vals) {
+			value = vals[i]
+		}
+		value = strings.TrimSpace(value)
+
+		if col == "_id" && (value == "" || strings.EqualFold(value, "NULL")) {
+			continue
+		}
+
+		parsed := parseMongoInputValue(value)
+		if col == "_id" {
+			if s, ok := parsed.(string); ok {
+				if oid, err := primitive.ObjectIDFromHex(s); err == nil {
+					doc[col] = oid
+					continue
+				}
+			}
+		}
+
+		doc[col] = parsed
+	}
+
+	if len(doc) == 0 {
+		return 0, fmt.Errorf("no fields to insert")
+	}
+
+	_, err := d.client.Database(d.dbName).Collection(collection).InsertOne(ctx, doc)
+	if err != nil {
+		return 0, err
+	}
+
+	return 1, nil
+}
+
+func parseMongoInputValue(raw string) interface{} {
+	v := strings.TrimSpace(raw)
+	if v == "" || strings.EqualFold(v, "NULL") {
+		return nil
+	}
+
+	if strings.EqualFold(v, "true") {
+		return true
+	}
+	if strings.EqualFold(v, "false") {
+		return false
+	}
+
+	if i, err := strconv.ParseInt(v, 10, 64); err == nil {
+		return i
+	}
+	if f, err := strconv.ParseFloat(v, 64); err == nil {
+		return f
+	}
+
+	if strings.HasPrefix(v, "{") || strings.HasPrefix(v, "[") {
+		var js interface{}
+		if err := json.Unmarshal([]byte(v), &js); err == nil {
+			return js
+		}
+	}
+
+	return v
+}
+
+// ExecuteQuery supports lightweight MongoDB query commands for the query view.
+// Supported forms:
+// - collections
+// - find <collection> [<json-filter>]
+// - count <collection> [<json-filter>]
+// - <json-filter> (uses defaultCollection)
+func (d *MongoDriver) ExecuteQuery(ctx context.Context, query string, defaultCollection string, limit int64) (cols []string, rows [][]string, affected int64, err error) {
+	q := strings.TrimSpace(query)
+	if q == "" {
+		return nil, nil, 0, fmt.Errorf("empty query")
+	}
+
+	lower := strings.ToLower(q)
+
+	if lower == "collections" || lower == "show collections" {
+		names, lerr := d.ListTables(ctx)
+		if lerr != nil {
+			return nil, nil, 0, lerr
+		}
+		out := make([][]string, 0, len(names))
+		for _, n := range names {
+			out = append(out, []string{n})
+		}
+		return []string{"collection"}, out, int64(len(out)), nil
+	}
+
+	if strings.HasPrefix(lower, "count ") {
+		rest := strings.TrimSpace(q[len("count "):])
+		parts := strings.SplitN(rest, " ", 2)
+		collection := strings.TrimSpace(parts[0])
+		if collection == "" {
+			return nil, nil, 0, fmt.Errorf("usage: count <collection> [json-filter]")
+		}
+		filter := bson.M{}
+		if len(parts) == 2 {
+			filter, err = parseMongoFilter(strings.TrimSpace(parts[1]))
+			if err != nil {
+				return nil, nil, 0, err
+			}
+		}
+		n, cerr := d.client.Database(d.dbName).Collection(collection).CountDocuments(ctx, filter)
+		if cerr != nil {
+			return nil, nil, 0, cerr
+		}
+		return []string{"count"}, [][]string{{fmt.Sprintf("%d", n)}}, int64(n), nil
+	}
+
+	collection := defaultCollection
+	filter := bson.M{}
+
+	if strings.HasPrefix(lower, "find ") {
+		rest := strings.TrimSpace(q[len("find "):])
+		parts := strings.SplitN(rest, " ", 2)
+		collection = strings.TrimSpace(parts[0])
+		if collection == "" {
+			return nil, nil, 0, fmt.Errorf("usage: find <collection> [json-filter]")
+		}
+		if len(parts) == 2 {
+			filter, err = parseMongoFilter(strings.TrimSpace(parts[1]))
+			if err != nil {
+				return nil, nil, 0, err
+			}
+		}
+	} else if strings.HasPrefix(q, "{") {
+		if strings.TrimSpace(collection) == "" {
+			return nil, nil, 0, fmt.Errorf("no active collection; use: find <collection> <json-filter>")
+		}
+		filter, err = parseMongoFilter(q)
+		if err != nil {
+			return nil, nil, 0, err
+		}
+	} else {
+		return nil, nil, 0, fmt.Errorf("unsupported Mongo query. Use: collections, find, count, or JSON filter")
+	}
+
+	data, outCols, qerr := d.MongoQuery(ctx, collection, filter, limit)
+	if qerr != nil {
+		return nil, nil, 0, qerr
+	}
+	return outCols, data, int64(len(data)), nil
+}
+
+func parseMongoFilter(raw string) (bson.M, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return bson.M{}, nil
+	}
+
+	var obj map[string]interface{}
+	if err := json.Unmarshal([]byte(trimmed), &obj); err != nil {
+		return nil, fmt.Errorf("invalid JSON filter: %w", err)
+	}
+	return bson.M(obj), nil
 }

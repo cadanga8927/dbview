@@ -14,58 +14,62 @@ import (
 	"strings"
 	"time"
 
-	btable "github.com/charmbracelet/bubbles/table"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/xuri/excelize/v2"
 	"dbview/internal/db"
 	"dbview/internal/table"
 	"dbview/internal/theme"
+	btable "github.com/charmbracelet/bubbles/table"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/xuri/excelize/v2"
 )
+
+const startupTimeout = 10 * time.Second
 
 // Model is the main Bubble Tea model for the app.
 type Model struct {
-	driver     db.Driver
-	ctx        context.Context
-	cancel     context.CancelFunc
-	tables     []string
-	schema     map[string][]db.ColInfo
-	fks        map[string][]db.FKInfo
-	view       ViewMode
-	cursor     int
-	dbPath     string
-	query      string
-	search     string
-	dataTbl    btable.Model
-	activeTbl  string
-	dataCols   []string
-	allRows    [][]string
-	totalRows  int
-	sortCol    int
-	sortAsc    bool
-	affected   int64
-	err        error
-	width      int
-	height     int
-	ready      bool
-	dialog     Dialog
-	status     string
-	page       int
-	pages      int
-	colCursor  int
-	theme      string
-	helpVis    bool
-	queryHist  []string
-	qHistIdx   int
-	spinner    int
-	loading    bool
-	flash      string
-	flashEnd   time.Time
-	dbFileSize string
-	dbFileHash string
-	queryLog   db.QueryLog
-	prevView   ViewMode
-	logCursor  int
-	logExpand  bool
+	driver      db.Driver
+	ctx         context.Context
+	cancel      context.CancelFunc
+	tables      []string
+	schema      map[string][]db.ColInfo
+	fks         map[string][]db.FKInfo
+	view        ViewMode
+	cursor      int
+	dbPath      string
+	query       string
+	queryCursor int
+	search      string
+	dataTbl     btable.Model
+	activeTbl   string
+	dataCols    []string
+	allRows     [][]string
+	totalRows   int
+	sortCol     int
+	sortAsc     bool
+	affected    int64
+	err         error
+	width       int
+	height      int
+	ready       bool
+	dialog      Dialog
+	status      string
+	page        int
+	pages       int
+	colCursor   int
+	theme       string
+	helpVis     bool
+	queryHist   []string
+	qHistIdx    int
+	spinner     int
+	loading     bool
+	flash       string
+	flashEnd    time.Time
+	dbFileSize  string
+	dbFileHash  string
+	queryLog    db.QueryLog
+	prevView    ViewMode
+	logCursor   int
+	logExpand   bool
+	mouseOn     bool
 }
 
 // New creates a new Model by opening the given database.
@@ -84,24 +88,27 @@ func New(dsn string) Model {
 		dbFileSize: "",
 		dbFileHash: "",
 		queryLog:   db.NewQueryLog(),
+		mouseOn:    false,
 	}
 	m.ctx, m.cancel = context.WithCancel(context.Background())
+	startupCtx, startupCancel := context.WithTimeout(m.ctx, startupTimeout)
+	defer startupCancel()
 
-	driver, err := db.OpenDriver(m.ctx, dsn)
+	driver, err := db.OpenDriver(startupCtx, dsn)
 	if err != nil {
 		m.err = fmt.Errorf("open db: %w", err)
 		return m
 	}
 	m.driver = driver
 
-	tables, err := driver.ListTables(m.ctx)
+	tables, err := driver.ListTables(startupCtx)
 	if err != nil {
 		m.err = fmt.Errorf("list tables: %w", err)
 		return m
 	}
 	for _, name := range tables {
-		m.schema[name], _ = driver.LoadSchema(m.ctx, name)
-		m.fks[name], _ = driver.LoadFKs(m.ctx, name)
+		m.schema[name], _ = driver.LoadSchema(startupCtx, name)
+		m.fks[name], _ = driver.LoadFKs(startupCtx, name)
 	}
 	m.tables = tables
 	m.ready = true
@@ -334,6 +341,57 @@ func (m Model) execQuery(q string) tea.Cmd {
 			Operation: "SELECT",
 			Query:     q,
 		}
+
+		if m.driver != nil {
+			switch m.driver.Kind() {
+			case db.KindMongoDB:
+				md, ok := m.driver.(*db.MongoDriver)
+				if !ok {
+					logEntry.Error = fmt.Errorf("mongo driver mismatch")
+					logEntry.Duration = time.Since(logEntry.Timestamp)
+					m.queryLog.Add(logEntry)
+					return ErrMsg{Err: logEntry.Error}
+				}
+				cols, rows, affected, err := md.ExecuteQuery(m.ctx, q, m.activeTbl, int64(db.PageSize))
+				logEntry.Duration = time.Since(logEntry.Timestamp)
+				logEntry.Operation = "MONGO"
+				if err != nil {
+					logEntry.Error = err
+					m.queryLog.Add(logEntry)
+					return ErrMsg{Err: err}
+				}
+				logEntry.RowsAffected = affected
+				m.queryLog.Add(logEntry)
+				if len(cols) > 0 {
+					return QueryResult{Cols: cols, Rows: rows, Affected: affected}
+				}
+				return QueryResult{Affected: affected}
+
+			case db.KindRedis:
+				rd, ok := m.driver.(*db.RedisDriver)
+				if !ok {
+					logEntry.Error = fmt.Errorf("redis driver mismatch")
+					logEntry.Duration = time.Since(logEntry.Timestamp)
+					m.queryLog.Add(logEntry)
+					return ErrMsg{Err: logEntry.Error}
+				}
+				cols, rows, affected, err := rd.ExecuteQuery(m.ctx, q)
+				logEntry.Duration = time.Since(logEntry.Timestamp)
+				logEntry.Operation = "REDIS"
+				if err != nil {
+					logEntry.Error = err
+					m.queryLog.Add(logEntry)
+					return ErrMsg{Err: err}
+				}
+				logEntry.RowsAffected = affected
+				m.queryLog.Add(logEntry)
+				if len(cols) > 0 {
+					return QueryResult{Cols: cols, Rows: rows, Affected: affected}
+				}
+				return QueryResult{Affected: affected}
+			}
+		}
+
 		rows, err := m.driver.Query(m.ctx, q)
 		if err == nil {
 			defer rows.Close()

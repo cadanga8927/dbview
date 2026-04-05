@@ -14,7 +14,7 @@ import (
 	"dbview/internal/db"
 )
 
-var version = "0.1.5"
+var version = "0.1.6"
 
 const releaseAPIURL = "https://api.github.com/repos/pageton/dbview/releases/latest"
 
@@ -80,7 +80,7 @@ func main() {
 	}
 
 	ctx := context.Background()
-	p := tea.NewProgram(app.New(dbPath), tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithContext(ctx))
+	p := tea.NewProgram(app.New(dbPath), tea.WithAltScreen(), tea.WithContext(ctx))
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
@@ -191,11 +191,12 @@ KEYBINDINGS
     ↑↓               Navigate entries
     enter            Expand/collapse entry
 
-  Global
-    T                Cycle theme (8 themes)
-    Q                Open query log
-    ?                Toggle help overlay
-    q                Quit
+	Global
+	  T                Cycle theme (8 themes)
+	  M                Toggle mouse capture / terminal select
+	  Q                Open query log
+	  ?                Toggle help overlay
+	  q                Quit
     esc              Go back / cancel
     ctrl+c           Force quit
 
