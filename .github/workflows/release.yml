@@ -45,11 +45,12 @@ jobs:
                 -ldflags="-s -w -X main.version=${VERSION}" \
                 -o dist/${APP_NAME}_${VERSION}_linux_amd64 ./cmd/dbview
 
-              package_dir="dist/${APP_NAME}_${VERSION}_linux_amd64"
+              mkdir -p dist/package
+              package_dir="dist/package/${APP_NAME}_${VERSION}_linux_amd64"
               mkdir -p "${package_dir}"
               cp dist/${APP_NAME}_${VERSION}_linux_amd64 "${package_dir}/${APP_NAME}"
               cp README.md "${package_dir}/"
-              tar -C dist -czf "dist/${APP_NAME}_${VERSION}_manylinux2014_x86_64.tar.gz" "$(basename "${package_dir}")"
+              tar -C dist/package -czf "dist/${APP_NAME}_${VERSION}_manylinux2014_x86_64.tar.gz" "$(basename "${package_dir}")"
             '
 
       - name: Upload Linux manylinux2014 artifact
@@ -85,22 +86,23 @@ jobs:
             -ldflags="-s -w -X main.version=${VERSION}" \
             -o dist/${APP_NAME}_${VERSION}_darwin_amd64 ./cmd/dbview
 
-          package_dir="dist/${APP_NAME}_${VERSION}_darwin_amd64"
+          mkdir -p dist/package
+          package_dir="dist/package/${APP_NAME}_${VERSION}_darwin_amd64"
           mkdir -p "${package_dir}"
           cp dist/${APP_NAME}_${VERSION}_darwin_amd64 "${package_dir}/${APP_NAME}"
           cp README.md "${package_dir}/"
-          tar -C dist -czf "dist/${APP_NAME}_${VERSION}_darwin_amd64.tar.gz" "$(basename "${package_dir}")"
+          tar -C dist/package -czf "dist/${APP_NAME}_${VERSION}_darwin_amd64.tar.gz" "$(basename "${package_dir}")"
 
           CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 \
             go build -buildvcs=false -trimpath \
             -ldflags="-s -w -X main.version=${VERSION}" \
             -o dist/${APP_NAME}_${VERSION}_darwin_arm64 ./cmd/dbview
 
-          package_dir="dist/${APP_NAME}_${VERSION}_darwin_arm64"
+          package_dir="dist/package/${APP_NAME}_${VERSION}_darwin_arm64"
           mkdir -p "${package_dir}"
           cp dist/${APP_NAME}_${VERSION}_darwin_arm64 "${package_dir}/${APP_NAME}"
           cp README.md "${package_dir}/"
-          tar -C dist -czf "dist/${APP_NAME}_${VERSION}_darwin_arm64.tar.gz" "$(basename "${package_dir}")"
+          tar -C dist/package -czf "dist/${APP_NAME}_${VERSION}_darwin_arm64.tar.gz" "$(basename "${package_dir}")"
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
@@ -136,11 +138,12 @@ jobs:
             -ldflags="-s -w -X main.version=${VERSION}" \
             -o dist/${APP_NAME}_${VERSION}_windows_amd64.exe ./cmd/dbview
 
-          package_dir="dist/${APP_NAME}_${VERSION}_windows_amd64"
+          mkdir -p dist/package
+          package_dir="dist/package/${APP_NAME}_${VERSION}_windows_amd64"
           mkdir -p "${package_dir}"
           cp dist/${APP_NAME}_${VERSION}_windows_amd64.exe "${package_dir}/${APP_NAME}.exe"
           cp README.md "${package_dir}/"
-          (cd dist && zip -rq "${APP_NAME}_${VERSION}_windows_amd64.zip" "$(basename "${package_dir}")")
+          (cd dist/package && zip -rq "../${APP_NAME}_${VERSION}_windows_amd64.zip" "$(basename "${package_dir}")")
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
@@ -175,11 +178,12 @@ jobs:
             -ldflags="-s -w -X main.version=${VERSION}" \
             -o dist/${APP_NAME}_${VERSION}_linux_arm64 ./cmd/dbview
 
-          package_dir="dist/${APP_NAME}_${VERSION}_linux_arm64"
+          mkdir -p dist/package
+          package_dir="dist/package/${APP_NAME}_${VERSION}_linux_arm64"
           mkdir -p "${package_dir}"
           cp dist/${APP_NAME}_${VERSION}_linux_arm64 "${package_dir}/${APP_NAME}"
           cp README.md "${package_dir}/"
-          tar -C dist -czf "dist/${APP_NAME}_${VERSION}_linux_arm64.tar.gz" "$(basename "${package_dir}")"
+          tar -C dist/package -czf "dist/${APP_NAME}_${VERSION}_linux_arm64.tar.gz" "$(basename "${package_dir}")"
 
       - name: Upload Linux arm64 artifact
         uses: actions/upload-artifact@v4
