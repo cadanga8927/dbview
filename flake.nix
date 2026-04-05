@@ -17,7 +17,7 @@
           pname = "dbview";
           inherit version;
           src = ./.;
-          vendorHash = null; # set after first build, see note below
+          vendorHash = "sha256-PiyWlfzdXaVSMxrAtDrpi7sSCYK14A3uENuyBYi5zLE=";
           ldflags = [ "-s" "-w" ];
           meta = with pkgs.lib; {
             description = "Terminal TUI database viewer for SQLite, MySQL, PostgreSQL, MongoDB, and Redis";
