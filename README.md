@@ -8,7 +8,24 @@ Terminal TUI database viewer for SQLite, MySQL, PostgreSQL, MongoDB, and Redis.
 go install github.com/pageton/dbview/cmd/dbview@latest
 ```
 
-Tagged releases also publish a prebuilt Linux `manylinux2014` archive in GitHub Releases.
+Or install the latest release binary to `~/.local/bin`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/pageton/dbview/main/install.sh | sh
+```
+
+```sh
+wget -qO- https://raw.githubusercontent.com/pageton/dbview/main/install.sh | sh
+```
+
+Optional overrides:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/pageton/dbview/main/install.sh | \
+  DBVIEW_VERSION=v0.1.4 DBVIEW_INSTALL_DIR="$HOME/bin" sh
+```
+
+Tagged releases also publish prebuilt binaries and archives in GitHub Releases.
 
 Or from the repo root:
 
