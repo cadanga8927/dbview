@@ -1,0 +1,12 @@
+# Build output
+dbview
+
+# Database and data files
+*.db
+*.csv
+*.json
+*.xlsx
+*.sql
+
+# Tool session metadata
+.omc/
