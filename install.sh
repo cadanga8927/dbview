@@ -6,6 +6,8 @@ REPO="${DBVIEW_REPO:-pageton/dbview}"
 INSTALL_DIR="${DBVIEW_INSTALL_DIR:-$HOME/.local/bin}"
 VERSION="${DBVIEW_VERSION:-latest}"
 APP_NAME="dbview"
+release_json=""
+tmpfile=""
 
 need_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -43,7 +45,6 @@ resolve_version() {
 
   api_url="https://api.github.com/repos/$REPO/releases/latest"
   release_json="$(mktemp)"
-  trap 'rm -f "$release_json" "$tmpfile"' EXIT INT TERM
   fetch "$api_url" "$release_json"
 
   resolved_version="$(grep -m1 '"tag_name"' "$release_json" | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')"
@@ -100,7 +101,7 @@ need_cmd chmod
 need_cmd mkdir
 
 tmpfile="$(mktemp)"
-trap 'rm -f "$tmpfile" "$release_json"' EXIT INT TERM
+trap 'rm -f "${tmpfile:-}" "${release_json:-}"' EXIT INT TERM
 
 resolved_version="$(resolve_version)"
 detect_asset
