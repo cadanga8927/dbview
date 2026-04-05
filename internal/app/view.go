@@ -383,27 +383,20 @@ func (m Model) renderSchema() string {
 			printFKRow([]string{fk.From, fk.Table, fk.To})
 		}
 	}
-	idxRows, err := m.driver.Query(m.ctx, fmt.Sprintf("PRAGMA index_list(%q)", m.activeTbl))
-	if err == nil {
-		var indices []string
-		for idxRows.Next() {
-			var name string
-			var unique int
-			idxRows.Scan(&name, &unique, nil)
-			u := ""
-			if unique == 1 {
-				u = " UNIQUE"
+	indices, err := m.driver.LoadIndices(m.ctx, m.activeTbl)
+	if err == nil && len(indices) > 0 {
+		b.WriteString("\n")
+		b.WriteString(theme.StyledBold("Indices:", cl.Warn))
+		b.WriteString("\n")
+		for _, idx := range indices {
+			label := idx.Name
+			if idx.Unique {
+				label += " UNIQUE"
 			}
-			indices = append(indices, name+u)
-		}
-		idxRows.Close()
-		if len(indices) > 0 {
-			b.WriteString("\n")
-			b.WriteString(theme.StyledBold("Indices:", cl.Warn))
-			b.WriteString("\n")
-			for _, idx := range indices {
-				b.WriteString("  • " + idx + "\n")
+			if len(idx.Columns) > 0 {
+				label += " (" + strings.Join(idx.Columns, ", ") + ")"
 			}
+			b.WriteString("  • " + label + "\n")
 		}
 	}
 	b.WriteString(theme.HelpStyle(cl).Render(" esc back • d data • r reload • / sql • ? help • q quit"))
