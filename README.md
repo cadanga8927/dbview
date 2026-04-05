@@ -2,9 +2,9 @@
 
 Terminal TUI database viewer for SQLite, MySQL, PostgreSQL, MongoDB, and Redis.
 
-<video src="docs/dbview-demo.mp4" controls playsinline width="100%"></video>
+![dbview demo](docs/dbview-demo-preview.gif)
 
-[Direct video link](docs/dbview-demo.mp4)
+[Direct demo preview file](docs/dbview-demo-preview.gif)
 
 ## Install
 
