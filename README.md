@@ -5,7 +5,7 @@ Terminal TUI database viewer for SQLite, MySQL, PostgreSQL, MongoDB, and Redis.
 ## Install
 
 ```sh
-go install ./cmd/dbview
+go install github.com/pageton/dbview/cmd/dbview@latest
 ```
 
 Or from the repo root:
@@ -36,7 +36,7 @@ Flags: `-h`, `--help`, `-v`, `--version`
 
 ```sh
 # Run directly
-nix run . -- <database-path-or-url>
+nix run github:pageton/dbview -- <database-path-or-url>
 
 # Enter dev shell
 nix develop
