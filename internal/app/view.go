@@ -1,0 +1,645 @@
+package app
+
+import (
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/charmbracelet/lipgloss"
+
+	"dbview/internal/db"
+	"dbview/internal/table"
+	"dbview/internal/theme"
+)
+
+// View renders the current UI view.
+func (m Model) View() string {
+	if !m.ready {
+		return "Loading..."
+	}
+
+	var content string
+	switch m.view {
+	case ViewTables:
+		content = m.renderTables()
+	case ViewData:
+		content = m.renderData()
+	case ViewSchema:
+		content = m.renderSchema()
+	case ViewQuery:
+		content = m.renderQuery()
+	case ViewSearch:
+		content = m.renderSearch()
+	case ViewStats:
+		content = m.renderStats()
+	case ViewQueryLog:
+		content = m.renderQueryLog()
+	case ViewDetail:
+		content = m.renderDetail()
+	}
+	if m.helpVis {
+		content += m.renderHelp()
+	}
+	if m.dialog.Kind != DlgNone {
+		content += m.renderDialog()
+	}
+	return content
+}
+
+// --- Header and pagination ---
+
+// renderHelpBar renders a responsive help bar that adapts to screen width.
+func (m Model) renderHelpBar(items []string) string {
+	cl := m.c()
+	full := " " + strings.Join(items, " • ")
+	// If it fits, return as-is
+	if len(full) <= m.width {
+		return theme.HelpStyle(cl).Render(full)
+	}
+	// Progressive reduction based on width
+	if m.width >= 100 {
+		// Medium: show essential shortcuts
+		medium := []string{"←→ col", "↑↓ scroll", "e edit", "x del", "a add", "E export", "s schema", "/ sql", "? help", "q quit"}
+		return theme.HelpStyle(cl).Render(" " + strings.Join(medium, " • "))
+	}
+	if m.width >= 60 {
+		// Compact: minimal set
+		compact := []string{"e edit", "x del", "s schema", "? help", "q quit"}
+		return theme.HelpStyle(cl).Render(" " + strings.Join(compact, " • "))
+	}
+	// Tiny: just help and quit
+	return theme.HelpStyle(cl).Render(" ? help • q quit")
+}
+
+func (m Model) viewerTitle() string {
+	if m.driver == nil {
+		return "dbview"
+	}
+	switch m.driver.Kind() {
+	case db.KindSQLite:
+		return "SQLite"
+	case db.KindMySQL:
+		return "MySQL"
+	case db.KindPostgreSQL:
+		return "PostgreSQL"
+	case db.KindMongoDB:
+		return "MongoDB"
+	case db.KindRedis:
+		return "Redis"
+	default:
+		return "dbview"
+	}
+}
+
+func (m Model) header(title string) string {
+	cl := m.c()
+	right := ""
+	status := ""
+	if m.status != "" && time.Now().Before(m.flashEnd) {
+		status = "  " + theme.Styled(m.status, cl.Ok)
+	}
+	spinner := ""
+	if m.loading {
+		spinner = " " + theme.SpinnerFrames[m.spinner]
+	}
+	// Calculate title width, ensure right side fits
+	titleStyled := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(cl.Accent)).Render(title)
+	titleLen := len(title) // raw length for measurement
+	rightPart := theme.Styled(right, cl.Dim) + spinner + status
+	rightRaw := right + spinner
+	if m.status != "" && time.Now().Before(m.flashEnd) {
+		rightRaw += "  " + m.status
+	}
+	// Truncate right side if title + right exceeds width
+	avail := m.width - titleLen - 2
+	if avail < 10 {
+		// Truncate title instead
+		if m.width > 20 {
+			truncLen := m.width - len(rightRaw) - 4
+			if truncLen > 0 && truncLen < len(title) {
+				title = table.Trunc(title, truncLen)
+				titleStyled = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(cl.Accent)).Render(title)
+			}
+		}
+	}
+	return lipgloss.NewStyle().Width(m.width).Render(
+		lipgloss.JoinHorizontal(lipgloss.Top,
+			titleStyled,
+			rightPart,
+		))
+}
+
+func (m Model) renderPagination() string {
+	if m.activeTbl == "query" || m.pages <= 1 {
+		return ""
+	}
+	cl := m.c()
+	from := (m.page-1)*db.PageSize + 1
+	to := m.page * db.PageSize
+	if to > m.totalRows {
+		to = m.totalRows
+	}
+	info := fmt.Sprintf("Rows %d-%d of %d", from, to, m.totalRows)
+	nav := fmt.Sprintf("Page %d/%d", m.page, m.pages)
+	left := " [ ] prev  { } first"
+	right := "[ ] next  { } last"
+	return lipgloss.NewStyle().Width(m.width).Render(
+		lipgloss.JoinHorizontal(lipgloss.Top,
+			theme.Styled(left, cl.Dim),
+			lipgloss.NewStyle().Foreground(lipgloss.Color(cl.White)).Background(lipgloss.Color(cl.Accent)).Padding(0, 2).Bold(true).Render(nav),
+			theme.Styled(" "+info+" ", cl.Ok),
+			theme.Styled(right, cl.Dim),
+		))
+}
+
+// --- Help overlay ---
+
+func (m Model) renderHelp() string {
+	cl := m.c()
+	box := lipgloss.NewStyle().
+		Border(lipgloss.DoubleBorder()).
+		BorderForeground(lipgloss.Color(cl.Accent)).
+		Padding(1, 3).
+		Width(m.width - 6).
+		Background(lipgloss.Color(cl.Bg))
+
+	var b strings.Builder
+	b.WriteString(box.Render(
+		lipgloss.JoinVertical(lipgloss.Left,
+			theme.StyledBold(fmt.Sprintf("%s Viewer — Help", m.viewerTitle()), cl.Accent),
+			"",
+			theme.StyledBold("TABLES VIEW", cl.Accent),
+			theme.Styled("  ↑↓/jk     Navigate tables", cl.White),
+			theme.Styled("  enter     Open table data", cl.White),
+			theme.Styled("  s        View schema", cl.White),
+			theme.Styled("  x        Drop table (confirm)", cl.White),
+			theme.Styled("  D        Database stats", cl.White),
+			theme.Styled("  F        Flush table (with confirmation)", cl.White),
+			theme.Styled("  /        SQL query", cl.White),
+			"",
+			theme.StyledBold("DATA VIEW", cl.Accent),
+			theme.Styled("  ←→/hl    Select column", cl.White),
+			theme.Styled("  ↑↓       Scroll rows", cl.White),
+			theme.Styled("  1-9      Sort by column N", cl.White),
+			theme.Styled("  e        Edit cell (confirm)", cl.White),
+			theme.Styled("  x        Delete row (confirm)", cl.White),
+			theme.Styled("  d        Duplicate row", cl.White),
+			theme.Styled("  a        Add row", cl.White),
+			theme.Styled("  I        Import CSV/JSON", cl.White),
+			theme.Styled("  E        Export (CSV/JSON/XLSX/SQL)", cl.White),
+			theme.Styled("  c        Copy cell to clipboard", cl.White),
+			theme.Styled("  C        Copy row to clipboard", cl.White),
+			theme.Styled("  [ ]      Previous/next page", cl.White),
+			theme.Styled("  { }      First/last page", cl.White),
+			theme.Styled("  ctrl+f    Live filter", cl.White),
+			theme.Styled("  s        View schema", cl.White),
+			theme.Styled("  /        SQL query", cl.White),
+			"",
+			theme.StyledBold("QUERY VIEW", cl.Accent),
+			theme.Styled("  ↑/↓      Query history", cl.White),
+			theme.Styled("  enter    Execute query", cl.White),
+			theme.Styled("  esc      Back", cl.White),
+			"",
+			theme.StyledBold("GLOBAL", cl.Accent),
+			theme.Styled("  T        Cycle theme (8 themes)", cl.White),
+			theme.Styled("  ?        This help", cl.White),
+			theme.Styled("  q        Quit", cl.White),
+			theme.Styled("  esc      Go back / cancel", cl.White),
+			theme.Styled("  ctrl+c    Force quit", cl.White),
+		)))
+	return b.String()
+}
+
+// --- View renderers ---
+
+func (m Model) renderTables() string {
+	var b strings.Builder
+	b.WriteString(m.header(fmt.Sprintf("%s Viewer — %s", m.viewerTitle(), redactDSN(m.dbPath))))
+	b.WriteString("\n")
+	cl := m.c()
+	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(cl.White)).Bold(true).Render(
+		fmt.Sprintf(" Tables (%d)", len(m.tables))))
+	b.WriteString("\n\n")
+	for i, name := range m.tables {
+		prefix := "  "
+		style := lipgloss.NewStyle().Width(m.width - 4)
+		if i == m.cursor {
+			prefix = "> "
+			style = style.Background(lipgloss.Color(cl.Accent)).Foreground(lipgloss.Color(cl.White)).Bold(true).Width(m.width - 4)
+		}
+		rc := m.rowCount(name)
+		b.WriteString(style.Render(fmt.Sprintf("%s%-30s %s", prefix, name, theme.Styled(fmt.Sprintf("(%d rows)", rc), cl.Dim))))
+		b.WriteString("\n")
+	}
+	b.WriteString(theme.HelpStyle(cl).Render(" ↑↓ navigate • enter data • s schema • x drop • F flush • D stats • / sql • ? help • q quit"))
+	return b.String()
+}
+
+func (m Model) renderData() string {
+	var b strings.Builder
+	cl := m.c()
+	label := m.activeTbl
+	if m.search != "" {
+		filtered := m.filteredRows()
+		label = fmt.Sprintf("%s [filter: %q] (%d/%d)", m.activeTbl, m.search, len(filtered), len(m.allRows))
+	}
+	b.WriteString(m.header(fmt.Sprintf("Data — %s", label)))
+	b.WriteString("\n")
+	if m.sortCol >= 0 && m.sortCol < len(m.dataCols) {
+		dir := "ASC"
+		if !m.sortAsc {
+			dir = "DESC"
+		}
+		b.WriteString(theme.Styled(fmt.Sprintf(" Sort: %s %s", m.dataCols[m.sortCol], dir), cl.Dim))
+		b.WriteString("\n")
+	}
+	if m.colCursor >= 0 && m.colCursor < len(m.dataCols) {
+		b.WriteString(theme.Styled(fmt.Sprintf(" Col: %s", m.dataCols[m.colCursor]), cl.Warn))
+		b.WriteString("\n")
+	}
+	// Theme-aware border (fixes bug where only "light" theme got colored borders)
+	bs := theme.BorderedTable(cl)
+	b.WriteString(bs.Render(m.dataTbl.View()))
+	b.WriteString("\n")
+	b.WriteString(m.renderPagination())
+	if m.activeTbl != "query" && m.pages > 1 {
+		b.WriteString("\n")
+	}
+	helps := []string{"←→ col", "↑↓ scroll", "1-9 sort", "e edit", "x del", "d dup", "a add", "I import", "E export", "c cell", "C row", "[ ] page", "ctrl+f filter", "s schema", "/ sql", "? help", "q quit"}
+	b.WriteString(m.renderHelpBar(helps))
+	return b.String()
+}
+
+func (m Model) renderSchema() string {
+	var b strings.Builder
+	cl := m.c()
+	b.WriteString(m.header(fmt.Sprintf("Schema — %s", m.activeTbl)))
+	b.WriteString("\n")
+	info := m.schema[m.activeTbl]
+	widths := []int{5, 0, 15, 9, 12, 20}
+	totalFixed := 5 + 15 + 9 + 12 + 20 + 20
+	nameW := m.width - totalFixed
+	if nameW < 10 {
+		nameW = 10
+	}
+	widths[1] = nameW
+	printRow := func(cols []string) {
+		for i, c := range cols {
+			w := widths[i]
+			if i < len(widths) {
+				w = widths[i]
+			}
+			fmt.Fprintf(&b, " %-*s", w, table.Trunc(c, w))
+		}
+		b.WriteString("\n")
+	}
+	printRow([]string{"CID", "Column", "Type", "Not Null", "Primary Key", "Default"})
+	b.WriteString(strings.Repeat("-", m.width-2) + "\n")
+	for _, c := range info {
+		nn, pk, dflt := "—", "—", "—"
+		if c.NotNull {
+			nn = "YES"
+		}
+		if c.PK {
+			pk = "YES"
+		}
+		if c.Dflt.Valid {
+			dflt = c.Dflt.String
+		}
+		printRow([]string{fmt.Sprintf("%d", c.CID), c.Name, c.Type, nn, pk, dflt})
+	}
+	fks := m.fks[m.activeTbl]
+	if len(fks) > 0 {
+		b.WriteString("\n")
+		b.WriteString(theme.StyledBold("Foreign Keys:", cl.Warn))
+		b.WriteString("\n")
+		printFKRow := func(cols []string) {
+			for _, c := range cols {
+				fmt.Fprintf(&b, " %s", c)
+			}
+			b.WriteString("\n")
+		}
+		printFKRow([]string{"From", "Table", "To"})
+		b.WriteString(strings.Repeat("-", m.width-2) + "\n")
+		for _, fk := range fks {
+			printFKRow([]string{fk.From, fk.Table, fk.To})
+		}
+	}
+	idxRows, err := m.driver.Query(m.ctx, fmt.Sprintf("PRAGMA index_list(%q)", m.activeTbl))
+	if err == nil {
+		var indices []string
+		for idxRows.Next() {
+			var name string
+			var unique int
+			idxRows.Scan(&name, &unique, nil)
+			u := ""
+			if unique == 1 {
+				u = " UNIQUE"
+			}
+			indices = append(indices, name+u)
+		}
+		idxRows.Close()
+		if len(indices) > 0 {
+			b.WriteString("\n")
+			b.WriteString(theme.StyledBold("Indices:", cl.Warn))
+			b.WriteString("\n")
+			for _, idx := range indices {
+				b.WriteString("  • " + idx + "\n")
+			}
+		}
+	}
+	b.WriteString(theme.HelpStyle(cl).Render(" esc back • d data • / sql • ? help • q quit"))
+	return b.String()
+}
+
+func (m Model) renderStats() string {
+	var b strings.Builder
+	cl := m.c()
+	b.WriteString(m.header("Database Stats"))
+	b.WriteString("\n")
+	printRow := func(cols []string) {
+		for _, c := range cols {
+			fmt.Fprintf(&b, " %s", c)
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(cl.Accent)).Render(" Property              Value"))
+	b.WriteString("\n")
+	b.WriteString(strings.Repeat("─", m.width-2) + "\n")
+
+	printRow([]string{"Database", redactDSN(m.dbPath)})
+	printRow([]string{"Size", m.dbSize()})
+	printRow([]string{"Tables", fmt.Sprintf("%d", len(m.tables))})
+	totalRows := 0
+	for _, tbl := range m.tables {
+		totalRows += m.rowCount(tbl)
+	}
+	printRow([]string{"Total Rows", fmt.Sprintf("%d", totalRows)})
+	printRow([]string{"Theme", m.theme})
+
+	b.WriteString("\n")
+	b.WriteString(theme.StyledBold("Tables:", cl.Accent))
+	b.WriteString("\n")
+	printRow([]string{"Table", "Rows", "Size"})
+	b.WriteString(strings.Repeat("─", m.width-2) + "\n")
+	for _, tbl := range m.tables {
+		rc := m.rowCount(tbl)
+		sz := "—"
+		szRows, szErr := m.driver.Query(m.ctx, fmt.Sprintf("SELECT SUM(pgsize) FROM dbstat WHERE name=%q", tbl))
+		if szErr == nil {
+			if szRows.Next() {
+				szRows.Scan(&sz)
+			}
+			szRows.Close()
+		}
+		if sz == "" {
+			sz = "—"
+		}
+		printRow([]string{tbl, fmt.Sprintf("%d", rc), sz})
+	}
+	b.WriteString(theme.HelpStyle(cl).Render(" esc back • ? help • q quit"))
+	return b.String()
+}
+
+func (m Model) renderQuery() string {
+	var b strings.Builder
+	cl := m.c()
+	b.WriteString(m.header("SQL Query"))
+	b.WriteString("\n")
+	b.WriteString(theme.WarnStyle(cl).Render(" Enter SQL and press Enter to execute | Up/Down: history"))
+	b.WriteString("\n")
+	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(cl.White)).Render(fmt.Sprintf(" > %s█", m.query)))
+	b.WriteString("\n")
+	if m.err != nil {
+		b.WriteString(theme.ErrStyle(cl).Render(fmt.Sprintf(" %v", m.err)))
+		b.WriteString("\n")
+	}
+	if m.affected > 0 && len(m.dataCols) == 0 {
+		b.WriteString(theme.OkStyle(cl).Render(fmt.Sprintf(" %d row(s) affected", m.affected)))
+		b.WriteString("\n")
+	}
+	if len(m.dataCols) > 0 {
+		// Theme-aware border (fixes bug where only "light" theme got colored borders)
+		bs := theme.BorderedTable(cl)
+		b.WriteString(bs.Render(m.dataTbl.View()))
+		b.WriteString("\n")
+		b.WriteString(theme.OkStyle(cl).Render(fmt.Sprintf(" %d row(s)", len(m.allRows))))
+		b.WriteString("\n")
+	}
+	b.WriteString(theme.HelpStyle(cl).Render(" enter execute • ↑↓ history • esc back • ? help • q quit"))
+	return b.String()
+}
+
+func (m Model) renderSearch() string {
+	var b strings.Builder
+	cl := m.c()
+	b.WriteString(m.header(fmt.Sprintf("Filter — %s", m.activeTbl)))
+	b.WriteString("\n")
+	b.WriteString(theme.WarnStyle(cl).Render(" Type to filter rows (live search)"))
+	b.WriteString("\n")
+	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(cl.White)).Render(fmt.Sprintf(" /%s█", m.search)))
+	b.WriteString("\n")
+	filtered := m.filteredRows()
+	b.WriteString(theme.DimStyle(cl).Render(fmt.Sprintf(" %d/%d rows match", len(filtered), len(m.allRows))))
+	b.WriteString("\n")
+	// Theme-aware border (fixes bug where only "light" theme got colored borders)
+	bs := theme.BorderedTable(cl)
+	b.WriteString(bs.Render(m.dataTbl.View()))
+	b.WriteString("\n")
+	b.WriteString(theme.HelpStyle(cl).Render(" enter confirm • esc clear • ? help • q quit"))
+	return b.String()
+}
+
+// --- Query Log View ---
+
+func (m Model) renderQueryLog() string {
+	var b strings.Builder
+	cl := m.c()
+	b.WriteString(m.header("Query Log"))
+	b.WriteString("\n")
+	entries := m.queryLog.Entries
+	if len(entries) == 0 {
+		b.WriteString(theme.DimStyle(cl).Render(" No queries logged yet.\n Execute some operations (edit, insert, delete, etc.) to see them here."))
+		b.WriteString("\n")
+	} else {
+		// Show entries in reverse chronological order
+		for i := len(entries) - 1; i >= 0; i-- {
+			e := entries[i]
+			isSelected := (len(entries) - 1 - i) == m.logCursor
+			prefix := "  "
+			style := lipgloss.NewStyle().Width(m.width - 4)
+			if isSelected {
+				prefix = "> "
+				style = style.Background(lipgloss.Color(cl.Accent)).Foreground(lipgloss.Color(cl.White)).Bold(true).Width(m.width - 4)
+			}
+			// Operation badge
+			opColor := cl.Ok
+			switch e.Operation {
+			case "DELETE", "DROP":
+				opColor = cl.Err
+			case "INSERT":
+				opColor = cl.Ok
+			case "UPDATE":
+				opColor = cl.Warn
+			}
+			opBadge := lipgloss.NewStyle().Foreground(lipgloss.Color(opColor)).Bold(true).Render(fmt.Sprintf("[%s]", e.Operation))
+			ts := e.Timestamp.Format("15:04:05")
+			dur := ""
+			if e.Duration > 0 {
+				dur = fmt.Sprintf(" (%s)", e.Duration.Round(time.Microsecond))
+			}
+			errMark := ""
+			if e.Error != nil {
+				errMark = " FAILED"
+			}
+			line := fmt.Sprintf("%s %s %s%s  %s", prefix, ts, opBadge, errMark, dur)
+			b.WriteString(style.Render(line))
+			b.WriteString("\n")
+			// Show query preview (first line)
+			if isSelected && m.logExpand {
+				queryLines := strings.Split(e.Query, "\n")
+				for _, ql := range queryLines {
+					b.WriteString(style.Render("    " + ql))
+					b.WriteString("\n")
+				}
+				if e.Error != nil {
+					b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(cl.Err)).Render("    Error: " + e.Error.Error()))
+					b.WriteString("\n")
+				}
+				if e.RowsAffected > 0 {
+					b.WriteString(style.Render(fmt.Sprintf("    Rows affected: %d", e.RowsAffected)))
+					b.WriteString("\n")
+				}
+			} else {
+				// Show truncated query preview
+				preview := e.Query
+				if idx := strings.Index(preview, "\n"); idx >= 0 {
+					preview = preview[:idx]
+				}
+				if len(preview) > 80 {
+					preview = preview[:77] + "..."
+				}
+				b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(cl.Dim)).Render("    " + preview))
+				b.WriteString("\n")
+			}
+		}
+	}
+	b.WriteString(theme.HelpStyle(cl).Render(" ↑↓ navigate • enter expand • esc back • ? help • q quit"))
+	return b.String()
+}
+
+// --- Detail View ---
+
+func (m Model) renderDetail() string {
+	var b strings.Builder
+	cl := m.c()
+	b.WriteString(m.header(fmt.Sprintf("Detail — %s (row %d/%d)", m.activeTbl, m.logCursor+1, m.totalRows)))
+	b.WriteString("\n")
+	// Show current row as key-value pairs
+	if m.logCursor >= 0 && m.logCursor < len(m.allRows) {
+		row := m.allRows[m.logCursor]
+		maxNameW := 0
+		for _, c := range m.dataCols {
+			if len(c) > maxNameW {
+				maxNameW = len(c)
+			}
+		}
+		for i, col := range m.dataCols {
+			val := ""
+			if i < len(row) {
+				val = row[i]
+			}
+			nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(cl.Accent)).Bold(true).Width(maxNameW + 2)
+			valStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(cl.White))
+			b.WriteString(nameStyle.Render(col+" :"))
+			b.WriteString(valStyle.Render(" " + val))
+			b.WriteString("\n")
+		}
+	} else {
+		b.WriteString(theme.DimStyle(cl).Render(" No data for this row."))
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
+	b.WriteString(theme.HelpStyle(cl).Render(" ↑↓ navigate rows • esc back • ? help • q quit"))
+	return b.String()
+}
+
+// --- Dialog renderer ---
+
+func (m Model) renderDialog() string {
+	d := m.dialog
+	cl := m.c()
+	switch d.Kind {
+	case DlgConfirm:
+		box := theme.BoxError(cl).Width(m.width - 8).Render(
+			lipgloss.JoinVertical(lipgloss.Left,
+				theme.ErrStyle(cl).Bold(true).Render("!! "+d.Title),
+				"", d.Body, "",
+				theme.OkStyle(cl).Render("[Y] Yes")+"   "+theme.DimStyle(cl).Render("[N] No / Esc"),
+			),
+		)
+		return lipgloss.NewStyle().MarginTop(1).Render(box)
+	case DlgEdit:
+		box := theme.BoxAccent(cl).Width(m.width - 8).Render(
+			lipgloss.JoinVertical(lipgloss.Left,
+				theme.WarnStyle(cl).Bold(true).Render(">> "+d.Title),
+				"", d.Body, "",
+				lipgloss.NewStyle().Foreground(lipgloss.Color(cl.White)).Render("> "+d.Input+"█"),
+				"", theme.DimStyle(cl).Render("enter confirm • esc cancel"),
+			),
+		)
+		return lipgloss.NewStyle().MarginTop(1).Render(box)
+	case DlgExport:
+		box := theme.BoxOk(cl).Width(m.width - 8).Render(
+			lipgloss.JoinVertical(lipgloss.Left,
+				theme.OkStyle(cl).Bold(true).Render(">> "+d.Title),
+				"", d.Body, "",
+				"  [1] CSV (.csv)",
+				"  [2] JSON (.json)",
+				"  [3] Excel (.xlsx)",
+				"  [4] SQL Dump (.sql)",
+				"", theme.DimStyle(cl).Render("esc cancel"),
+			),
+		)
+		return lipgloss.NewStyle().MarginTop(1).Render(box)
+	case DlgAddRow:
+		box := theme.BoxAccent(cl).Width(m.width - 8).Render(
+			lipgloss.JoinVertical(lipgloss.Left,
+				theme.WarnStyle(cl).Bold(true).Render("++ "+d.Title),
+				"", d.Body, "",
+				lipgloss.NewStyle().Foreground(lipgloss.Color(cl.White)).Render("> "+d.Input+"█"),
+				"", theme.DimStyle(cl).Render("enter confirm • esc cancel"),
+			),
+		)
+		return lipgloss.NewStyle().MarginTop(1).Render(box)
+	case DlgImportFmt:
+		box := theme.BoxAccent(cl).Width(m.width - 8).Render(
+			lipgloss.JoinVertical(lipgloss.Left,
+				theme.WarnStyle(cl).Bold(true).Render(">> "+d.Title),
+				"", d.Body, "",
+				theme.DimStyle(cl).Render("esc cancel"),
+			),
+		)
+		return lipgloss.NewStyle().MarginTop(1).Render(box)
+	case DlgImportPath:
+		box := theme.BoxAccent(cl).Width(m.width - 8).Render(
+			lipgloss.JoinVertical(lipgloss.Left,
+				theme.WarnStyle(cl).Bold(true).Render(">> "+d.Title),
+				"", d.Body, "",
+				lipgloss.NewStyle().Foreground(lipgloss.Color(cl.White)).Render("> "+d.Input+"█"),
+				"", theme.DimStyle(cl).Render("enter import • esc cancel"),
+			),
+		)
+		return lipgloss.NewStyle().MarginTop(1).Render(box)
+	case DlgConfirmQuery:
+		box := theme.BoxError(cl).Width(m.width - 8).Render(
+			lipgloss.JoinVertical(lipgloss.Left,
+				theme.ErrStyle(cl).Bold(true).Render("!! "+d.Title),
+				"", d.Body, "",
+				theme.OkStyle(cl).Render("[Y] Yes, execute")+"   "+theme.DimStyle(cl).Render("[N] No / Esc"),
+			),
+		)
+		return lipgloss.NewStyle().MarginTop(1).Render(box)
+	}
+	return ""
+}

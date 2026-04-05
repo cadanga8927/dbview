@@ -1,5 +1,5 @@
 # Build output
-dbview
+/dbview
 
 # Database and data files
 *.db
