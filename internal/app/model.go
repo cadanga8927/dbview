@@ -584,7 +584,7 @@ func (m Model) exportSQL(base, fname string, cols []string, info []db.ColInfo, t
 	}
 	defer f.Close()
 	bw := bufio.NewWriter(f)
-	bw.WriteString(fmt.Sprintf("-- SQLite dump: %s.%s\n\n", base, m.activeTbl))
+	fmt.Fprintf(bw, "-- SQLite dump: %s.%s\n\n", base, m.activeTbl)
 	sr, _ := m.driver.Query(m.ctx, fmt.Sprintf("SELECT sql FROM sqlite_master WHERE type='table' AND name=%q", m.activeTbl))
 	if sr != nil {
 		for sr.Next() {
@@ -625,7 +625,7 @@ func (m Model) exportSQL(base, fname string, cols []string, info []db.ColInfo, t
 					}
 				}
 			}
-			bw.WriteString(fmt.Sprintf("INSERT INTO %q (%s) VALUES (%s);\n", m.activeTbl, strings.Join(cs, ", "), strings.Join(vs, ", ")))
+			fmt.Fprintf(bw, "INSERT INTO %q (%s) VALUES (%s);\n", m.activeTbl, strings.Join(cs, ", "), strings.Join(vs, ", "))
 			exported++
 		}
 	}

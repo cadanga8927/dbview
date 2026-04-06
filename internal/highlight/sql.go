@@ -225,7 +225,7 @@ func tokenize(input string, driverKind string) []token {
 			pos++
 			// Check for two-character operators
 			if pos < n {
-				two := string(runes[start:pos+1])
+				two := string(runes[start : pos+1])
 				if two == "<>" || two == "!=" || two == "<=" || two == ">=" || two == "||" {
 					pos++
 				}
@@ -347,13 +347,7 @@ func Highlight(query string, cursor int, cl theme.Colors, driverKind string) str
 
 		if cursor >= tokStart && cursor <= tokEnd {
 			// Cursor falls inside or at the boundary of this token.
-			localPos := cursor - tokStart
-			if localPos < 0 {
-				localPos = 0
-			}
-			if localPos > tokLen {
-				localPos = tokLen
-			}
+			localPos := min(max(cursor-tokStart, 0), tokLen)
 
 			before := string(tokRunes[:localPos])
 			after := string(tokRunes[localPos:])

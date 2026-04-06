@@ -108,11 +108,8 @@ func formatJSON(s string) string {
 // hexDump formats binary data as a hex dump.
 func hexDump(data []byte) string {
 	var parts []string
-	limit := len(data)
-	if limit > 64 {
-		limit = 64
-	}
-	for i := 0; i < limit; i++ {
+	limit := min(len(data), 64)
+	for i := range limit {
 		parts = append(parts, fmt.Sprintf("%02x", data[i]))
 	}
 	s := strings.Join(parts, " ")

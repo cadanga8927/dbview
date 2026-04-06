@@ -4,9 +4,10 @@ import (
 	"sort"
 	"strings"
 
+	"dbview/internal/theme"
+
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/lipgloss"
-	"dbview/internal/theme"
 )
 
 // Trunc truncates s to max runes, appending "..." if truncated.
@@ -55,18 +56,12 @@ func CalcColWidths(cols []string, rows [][]string, avail int) []table.Column {
 	}
 	minW := 10
 	if n == 1 {
-		w := avail - 4
-		if w < minW {
-			w = minW
-		}
+		w := max(avail-4, minW)
 		return []table.Column{{Title: cols[0], Width: w}}
 	}
 	totalMin := minW * n
 	if totalMin > avail {
-		w := avail / n
-		if w < 3 {
-			w = 3
-		}
+		w := max(avail/n, 3)
 		var out []table.Column
 		for _, c := range cols {
 			out = append(out, table.Column{Title: TruncMiddle(c, w-1), Width: w})
@@ -158,10 +153,7 @@ func SortedRows(rows [][]string, sortCol int, sortAsc bool, dataColsLen int) [][
 
 // BuildTable creates a table.Model from rows, columns, dimensions, sort state, and theme.
 func BuildTable(rows [][]string, cols []string, width, height, sortCol int, sortAsc bool, cl theme.Colors) table.Model {
-	avail := width - 6
-	if avail < 20 {
-		avail = 20
-	}
+	avail := max(width-6, 20)
 	tblCols := CalcColWidths(cols, rows, avail)
 	for i := range tblCols {
 		tblCols[i].Title = Trunc(cols[i]+SortArrow(i, sortCol, sortAsc), tblCols[i].Width-1)
@@ -176,10 +168,7 @@ func BuildTable(rows [][]string, cols []string, width, height, sortCol int, sort
 		}
 		tblRows = append(tblRows, r)
 	}
-	h := height - 12
-	if h < 3 {
-		h = 3
-	}
+	h := max(height-12, 3)
 	t := table.New(
 		table.WithColumns(tblCols),
 		table.WithRows(tblRows),

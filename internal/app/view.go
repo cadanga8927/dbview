@@ -67,7 +67,7 @@ func (m Model) View() string {
 
 func (m Model) renderStartupError() string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("Error: %v\n\n", m.err))
+	fmt.Fprintf(&b, "Error: %v\n\n", m.err)
 
 	kind, _ := db.DetectDriver(m.dbPath)
 	switch kind {
@@ -190,10 +190,7 @@ func (m Model) renderPagination() string {
 	}
 	cl := m.c()
 	from := (m.page-1)*db.PageSize + 1
-	to := m.page * db.PageSize
-	if to > m.totalRows {
-		to = m.totalRows
-	}
+	to := min(m.page*db.PageSize, m.totalRows)
 	info := fmt.Sprintf("Rows %d-%d of %d", from, to, m.totalRows)
 	nav := fmt.Sprintf("Page %d/%d", m.page, m.pages)
 	left := " [ ] prev  { } first"
@@ -351,10 +348,7 @@ func (m Model) renderSchema() string {
 	info := m.schema[m.activeTbl]
 	widths := []int{5, 0, 15, 9, 12, 20}
 	totalFixed := 5 + 15 + 9 + 12 + 20 + 20
-	nameW := m.width - totalFixed
-	if nameW < 10 {
-		nameW = 10
-	}
+	nameW := max(m.width-totalFixed, 10)
 	widths[1] = nameW
 	printRow := func(cols []string) {
 		for i, c := range cols {
@@ -495,7 +489,7 @@ func (m Model) renderQuery() string {
 		driverKind = string(m.driver.Kind())
 	}
 	highlighted := highlight.Highlight(m.query, m.queryCursor, cl, driverKind)
-	b.WriteString(fmt.Sprintf(" > %s", highlighted))
+	fmt.Fprintf(&b, " > %s", highlighted)
 	b.WriteString("\n")
 	if m.err != nil {
 		b.WriteString(theme.ErrStyle(cl).Render(fmt.Sprintf(" %v", m.err)))
@@ -584,8 +578,8 @@ func (m Model) renderQueryLog() string {
 			b.WriteString("\n")
 			// Show query preview (first line)
 			if isSelected && m.logExpand {
-				queryLines := strings.Split(e.Query, "\n")
-				for _, ql := range queryLines {
+				queryLines := strings.SplitSeq(e.Query, "\n")
+				for ql := range queryLines {
 					b.WriteString(style.Render("    " + ql))
 					b.WriteString("\n")
 				}

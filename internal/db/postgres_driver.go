@@ -16,8 +16,8 @@ type PostgreSQLDriver struct {
 
 func (d *PostgreSQLDriver) Open(ctx context.Context, dsn string) error {
 	// Accept both postgres:// and postgresql:// prefixes
-	if strings.HasPrefix(dsn, "postgresql://") {
-		dsn = "postgres://" + strings.TrimPrefix(dsn, "postgresql://")
+	if after, ok := strings.CutPrefix(dsn, "postgresql://"); ok {
+		dsn = "postgres://" + after
 	}
 	var err error
 	d.db, err = sql.Open("postgres", dsn)
