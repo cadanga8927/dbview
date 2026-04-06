@@ -14,7 +14,7 @@ import (
 	"dbview/internal/db"
 )
 
-var version = "0.1.7"
+var version = "0.1.8"
 
 const releaseAPIURL = "https://api.github.com/repos/pageton/dbview/releases/latest"
 
