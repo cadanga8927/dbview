@@ -114,16 +114,16 @@ func (m Model) renderHelpBar(items []string) string {
 	// Progressive reduction based on width
 	if m.width >= 100 {
 		// Medium: show essential shortcuts
-		medium := []string{"←→ col", "↑↓ scroll", "e edit", "x del", "a add", "E export", "s schema", "/ sql", "? help", "q quit"}
+		medium := []string{"←→ col", "↑↓ scroll", "e edit", "x del", "a add", "E export", "s schema", "/ sql", "? help", "q×2 quit"}
 		return theme.HelpStyle(cl).Render(" " + strings.Join(medium, " • "))
 	}
 	if m.width >= 60 {
 		// Compact: minimal set
-		compact := []string{"e edit", "x del", "s schema", "? help", "q quit"}
+		compact := []string{"e edit", "x del", "s schema", "? help", "q×2 quit"}
 		return theme.HelpStyle(cl).Render(" " + strings.Join(compact, " • "))
 	}
 	// Tiny: just help and quit
-	return theme.HelpStyle(cl).Render(" ? help • q quit")
+	return theme.HelpStyle(cl).Render(" ? help • q×2 quit")
 }
 
 func (m Model) viewerTitle() string {
@@ -301,7 +301,7 @@ func (m Model) renderTables() string {
 		b.WriteString(style.Render(fmt.Sprintf("%s%-30s %s", prefix, name, theme.Styled(fmt.Sprintf("(%d rows)", rc), cl.Dim))))
 		b.WriteString("\n")
 	}
-	b.WriteString(theme.HelpStyle(cl).Render(" ↑↓ navigate • enter data • s schema • x drop • F flush • D stats • / sql • r reload • ? help • q quit"))
+	b.WriteString(theme.HelpStyle(cl).Render(" ↑↓ navigate • enter data • s schema • x drop • F flush • D stats • / sql • r reload • ? help • q×2 quit"))
 	return b.String()
 }
 
@@ -335,7 +335,7 @@ func (m Model) renderData() string {
 	if m.activeTbl != "query" && m.pages > 1 {
 		b.WriteString("\n")
 	}
-	helps := []string{"←→ col", "↑↓ scroll", "1-9 sort", "e edit", "x del", "d dup", "a add", "I import", "E export", "c cell", "C row", "[ ] page", "ctrl+f filter", "r reload", "s schema", "/ sql", "? help", "q quit"}
+	helps := []string{"←→ col", "↑↓ scroll", "1-9 sort", "e edit", "x del", "d dup", "a add", "I import", "E export", "c cell", "C row", "[ ] page", "ctrl+f filter", "r reload", "s schema", "/ sql", "? help", "q×2 quit"}
 	b.WriteString(m.renderHelpBar(helps))
 	return b.String()
 }
@@ -408,7 +408,7 @@ func (m Model) renderSchema() string {
 			b.WriteString("  • " + label + "\n")
 		}
 	}
-	b.WriteString(theme.HelpStyle(cl).Render(" esc back • d data • r reload • / sql • ? help • q quit"))
+	b.WriteString(theme.HelpStyle(cl).Render(" esc back • d data • r reload • / sql • ? help • q×2 quit"))
 	return b.String()
 }
 
@@ -457,7 +457,7 @@ func (m Model) renderStats() string {
 		}
 		printRow([]string{tbl, fmt.Sprintf("%d", rc), sz})
 	}
-	b.WriteString(theme.HelpStyle(cl).Render(" esc back • ? help • q quit"))
+	b.WriteString(theme.HelpStyle(cl).Render(" esc back • ? help • q×2 quit"))
 	return b.String()
 }
 
@@ -507,7 +507,7 @@ func (m Model) renderQuery() string {
 		b.WriteString(theme.OkStyle(cl).Render(fmt.Sprintf(" %d row(s)", len(m.allRows))))
 		b.WriteString("\n")
 	}
-	b.WriteString(theme.HelpStyle(cl).Render(" enter execute • ↑↓ history • esc back • ? help • q quit"))
+	b.WriteString(theme.HelpStyle(cl).Render(" enter execute • ↑↓ history • esc back • ? help • q×2 quit"))
 	return b.String()
 }
 
@@ -527,7 +527,7 @@ func (m Model) renderSearch() string {
 	bs := theme.BorderedTable(cl)
 	b.WriteString(bs.Render(m.dataTbl.View()))
 	b.WriteString("\n")
-	b.WriteString(theme.HelpStyle(cl).Render(" enter confirm • esc clear • ? help • q quit"))
+	b.WriteString(theme.HelpStyle(cl).Render(" enter confirm • esc clear • ? help • q×2 quit"))
 	return b.String()
 }
 
@@ -605,7 +605,7 @@ func (m Model) renderQueryLog() string {
 			}
 		}
 	}
-	b.WriteString(theme.HelpStyle(cl).Render(" ↑↓ navigate • enter expand • esc back • ? help • q quit"))
+	b.WriteString(theme.HelpStyle(cl).Render(" ↑↓ navigate • enter expand • esc back • ? help • q×2 quit"))
 	return b.String()
 }
 
@@ -641,7 +641,7 @@ func (m Model) renderDetail() string {
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
-	b.WriteString(theme.HelpStyle(cl).Render(" ↑↓ navigate rows • esc back • ? help • q quit"))
+	b.WriteString(theme.HelpStyle(cl).Render(" ↑↓ navigate rows • esc back • ? help • q×2 quit"))
 	return b.String()
 }
 

@@ -17,6 +17,7 @@ import (
 	"dbview/internal/db"
 	"dbview/internal/table"
 	"dbview/internal/theme"
+
 	btable "github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/xuri/excelize/v2"
@@ -26,51 +27,52 @@ const startupTimeout = 10 * time.Second
 
 // Model is the main Bubble Tea model for the app.
 type Model struct {
-	driver      db.Driver
-	ctx         context.Context
-	cancel      context.CancelFunc
-	tables      []string
-	schema      map[string][]db.ColInfo
-	fks         map[string][]db.FKInfo
-	view        ViewMode
-	cursor      int
-	dbPath      string
-	query       string
-	queryCursor int
-	search      string
+	driver       db.Driver
+	ctx          context.Context
+	cancel       context.CancelFunc
+	tables       []string
+	schema       map[string][]db.ColInfo
+	fks          map[string][]db.FKInfo
+	view         ViewMode
+	cursor       int
+	dbPath       string
+	query        string
+	queryCursor  int
+	search       string
 	searchCursor int
-	dataTbl     btable.Model
-	activeTbl   string
-	dataCols    []string
-	allRows     [][]string
-	totalRows   int
-	sortCol     int
-	sortAsc     bool
-	affected    int64
-	err         error
-	width       int
-	height      int
-	ready       bool
-	dialog      Dialog
-	status      string
-	page        int
-	pages       int
-	colCursor   int
-	theme       string
-	helpVis     bool
-	queryHist   []string
-	qHistIdx    int
-	spinner     int
-	loading     bool
-	flash       string
-	flashEnd    time.Time
-	dbFileSize  string
-	dbFileHash  string
-	queryLog    db.QueryLog
-	prevView    ViewMode
-	logCursor   int
-	logExpand   bool
-	mouseOn     bool
+	dataTbl      btable.Model
+	activeTbl    string
+	dataCols     []string
+	allRows      [][]string
+	totalRows    int
+	sortCol      int
+	sortAsc      bool
+	affected     int64
+	err          error
+	width        int
+	height       int
+	ready        bool
+	dialog       Dialog
+	status       string
+	page         int
+	pages        int
+	colCursor    int
+	theme        string
+	helpVis      bool
+	queryHist    []string
+	qHistIdx     int
+	spinner      int
+	loading      bool
+	flash        string
+	flashEnd     time.Time
+	dbFileSize   string
+	dbFileHash   string
+	queryLog     db.QueryLog
+	prevView     ViewMode
+	logCursor    int
+	logExpand    bool
+	mouseOn       bool
+	lastQuitPress time.Time
 }
 
 // New creates a new Model by opening the given database.

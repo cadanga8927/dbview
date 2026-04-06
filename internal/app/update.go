@@ -652,12 +652,29 @@ func (m Model) updateDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// quitOnDoublePress handles the double-q-to-quit pattern.
+// On the first press it shows a hint; on a second press within 1s it quits.
+func (m Model) quitOnDoublePress() (tea.Model, tea.Cmd) {
+	if time.Since(m.lastQuitPress) < time.Second {
+		if m.cancel != nil {
+			m.cancel()
+		}
+		if m.driver != nil {
+			m.driver.Close()
+		}
+		return m, tea.Quit
+	}
+	m.lastQuitPress = time.Now()
+	m = m.setStatus("Press q again to quit")
+	return m, doTick()
+}
+
 // --- View-specific key handlers ---
 
 func (m Model) updateTables(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q":
-		return m, tea.Quit
+		return m.quitOnDoublePress()
 	case "up", "k":
 		if m.cursor > 0 {
 			m.cursor--
@@ -784,7 +801,7 @@ func (m Model) updateTables(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) updateData(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q":
-		return m, tea.Quit
+		return m.quitOnDoublePress()
 	case "esc":
 		m.view = ViewTables
 		return m, nil
@@ -1064,7 +1081,7 @@ func (m Model) updateData(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) updateSchema(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q":
-		return m, tea.Quit
+		return m.quitOnDoublePress()
 	case "esc", "s":
 		m.view = ViewTables
 	case "d":
@@ -1230,7 +1247,7 @@ func (m Model) updateQueryLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		m.logExpand = !m.logExpand
 	case "q":
-		return m, tea.Quit
+		return m.quitOnDoublePress()
 	}
 	return m, nil
 }
@@ -1251,7 +1268,7 @@ func (m Model) updateDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.logCursor++
 		}
 	case "q":
-		return m, tea.Quit
+		return m.quitOnDoublePress()
 	}
 	return m, nil
 }
