@@ -1,6 +1,6 @@
 # dbview
 
-Terminal TUI database viewer for SQLite, MySQL, PostgreSQL, MongoDB, and Redis.
+Terminal TUI database viewer for SQLite, MySQL, MariaDB, PostgreSQL, CockroachDB, MSSQL, MongoDB, Redis, and Cassandra.
 
 ![dbview demo](docs/dbview-demo-preview.gif)
 
@@ -48,9 +48,13 @@ Examples:
 ```sh
 dbview ./mydb.db
 dbview mysql://user:pass@host:3306/dbname
+dbview mariadb://user:pass@host:3306/dbname
 dbview postgres://user:pass@host:5432/dbname
+dbview cockroachdb://user:pass@host:26257/dbname
+dbview sqlserver://user:pass@host:1433/dbname
 dbview mongodb://host:27017/dbname
 dbview redis://host:6379
+dbview cassandra://user:pass@host:9042/keyspace
 ```
 
 Flags: `-h`, `--help`, `-v`, `--version`

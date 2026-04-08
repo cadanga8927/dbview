@@ -409,6 +409,29 @@ func (m Model) execQuery(q string) tea.Cmd {
 					return QueryResult{Cols: cols, Rows: rows, Affected: affected}
 				}
 				return QueryResult{Affected: affected}
+
+			case db.KindCassandra:
+				cd, ok := m.driver.(*db.CassandraDriver)
+				if !ok {
+					logEntry.Error = fmt.Errorf("cassandra driver mismatch")
+					logEntry.Duration = time.Since(logEntry.Timestamp)
+					m.queryLog.Add(logEntry)
+					return ErrMsg{Err: logEntry.Error}
+				}
+				cols, rows, affected, err := cd.ExecuteQuery(m.ctx, q)
+				logEntry.Duration = time.Since(logEntry.Timestamp)
+				logEntry.Operation = "CASSANDRA"
+				if err != nil {
+					logEntry.Error = err
+					m.queryLog.Add(logEntry)
+					return ErrMsg{Err: err}
+				}
+				logEntry.RowsAffected = affected
+				m.queryLog.Add(logEntry)
+				if len(cols) > 0 {
+					return QueryResult{Cols: cols, Rows: rows, Affected: affected}
+				}
+				return QueryResult{Affected: affected}
 			}
 		}
 

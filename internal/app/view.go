@@ -13,8 +13,6 @@ import (
 	"github.com/pageton/dbview/internal/theme"
 )
 
-// View renders the current UI view.
-
 // renderInputWithCursor renders text with a styled cursor at the given rune position.
 func renderInputWithCursor(text string, cursor int, _ ...bool) string {
 	runes := []rune(text)
@@ -24,21 +22,16 @@ func renderInputWithCursor(text string, cursor int, _ ...bool) string {
 	if cursor > len(runes) {
 		cursor = len(runes)
 	}
-	if cursor < len(runes) {
-		before := string(runes[:cursor])
-		ch := string(runes[cursor])
-		after := string(runes[cursor+1:])
-		cursorStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("0")).
-			Background(lipgloss.Color("7")).
-			Bold(true)
-		return before + cursorStyle.Render(ch) + after
-	}
-	// Cursor at end — show styled space
 	cursorStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("0")).
 		Background(lipgloss.Color("7")).
 		Bold(true)
+	if cursor < len(runes) {
+		before := string(runes[:cursor])
+		ch := string(runes[cursor])
+		after := string(runes[cursor+1:])
+		return before + cursorStyle.Render(ch) + after
+	}
 	return string(runes) + cursorStyle.Render(" ")
 }
 
@@ -47,7 +40,7 @@ func (m Model) View() string {
 		if m.err != nil {
 			return m.renderStartupError()
 		}
-		return "Loading..."
+		return m.renderLoading()
 	}
 
 	var content string
@@ -69,6 +62,11 @@ func (m Model) View() string {
 	case ViewDetail:
 		content = m.renderDetail()
 	}
+
+	if !m.helpVis && m.dialog.Kind == DlgNone {
+		content += "\n" + m.renderStatusBar()
+	}
+
 	if m.helpVis {
 		content += m.renderHelp()
 	}
@@ -77,6 +75,128 @@ func (m Model) View() string {
 	}
 	return content
 }
+
+// --- Header ---
+
+// viewTitle returns the display title for the current view.
+func (m Model) viewTitle() string {
+	switch m.view {
+	case ViewTables:
+		return "Tables"
+	case ViewData:
+		label := m.activeTbl
+		if len(m.searches) > 0 {
+			filtered := m.filteredRows()
+			quoted := make([]string, len(m.searches))
+			for i, s := range m.searches {
+				quoted[i] = fmt.Sprintf("%q", s)
+			}
+			label = fmt.Sprintf("%s [%s] (%d/%d)", m.activeTbl, strings.Join(quoted, "+"), len(filtered), len(m.allRows))
+		}
+		return "Data · " + label
+	case ViewSchema:
+		return "Schema · " + m.activeTbl
+	case ViewQuery:
+		return "Query"
+	case ViewSearch:
+		return "Filter · " + m.activeTbl
+	case ViewStats:
+		return "Stats"
+	case ViewQueryLog:
+		return "Query Log"
+	case ViewDetail:
+		return fmt.Sprintf("Detail · %s (%d/%d)", m.activeTbl, m.logCursor+1, m.totalRows)
+	default:
+		return "dbview"
+	}
+}
+
+// renderHeaderBar creates a full-width header bar with title, provider badge, and status.
+func (m Model) renderHeaderBar() string {
+	cl := m.c()
+
+	// Left: dbview · ViewTitle
+	leftTitle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(cl.HeaderFg)).
+		Bold(true).
+		Render("dbview")
+	leftSep := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(cl.Dim)).
+		Render(" · ")
+	leftView := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(cl.Accent)).
+		Bold(true).
+		Render(m.viewTitle())
+
+	left := leftTitle + leftSep + leftView
+
+	// Right: provider badge + dsn + status + spinner
+	var rightParts []string
+	if m.driver != nil {
+		badge := lipgloss.NewStyle().
+			Background(lipgloss.Color(cl.Accent)).
+			Foreground(lipgloss.Color(cl.White)).
+			Bold(true).
+			Padding(0, 1).
+			Render(" " + m.viewerTitle() + " ")
+		rightParts = append(rightParts, badge)
+
+		dsn := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(cl.Dim)).
+			Render(redactDSN(m.dbPath))
+		rightParts = append(rightParts, dsn)
+	}
+
+	if m.status != "" && time.Now().Before(m.flashEnd) {
+		statusStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(cl.Ok)).
+			Bold(true)
+		rightParts = append(rightParts, statusStyle.Render(m.status))
+	}
+
+	if m.loading {
+		spinStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(cl.Accent)).
+			Bold(true)
+		rightParts = append(rightParts, spinStyle.Render(theme.SpinnerFrames[m.spinner]))
+	}
+
+	right := strings.Join(rightParts, " ")
+
+	bar := lipgloss.NewStyle().
+		Background(lipgloss.Color(cl.HeaderBg)).
+		Width(m.width).
+		Padding(0, 1).
+		Render(lipgloss.JoinHorizontal(lipgloss.Top, left, "  ", right))
+
+	return lipgloss.NewStyle().Width(m.width).Render(bar)
+}
+
+// --- Pagination ---
+
+func (m Model) renderPagination() string {
+	if m.activeTbl == "query" || m.pages <= 1 {
+		return ""
+	}
+	cl := m.c()
+	from := (m.page-1)*db.PageSize + 1
+	to := min(m.page*db.PageSize, m.totalRows)
+
+	info := lipgloss.NewStyle().Foreground(lipgloss.Color(cl.Ok)).Render(fmt.Sprintf("Rows %d-%d of %d", from, to, m.totalRows))
+	nav := lipgloss.NewStyle().Foreground(lipgloss.Color(cl.White)).Background(lipgloss.Color(cl.Accent)).Padding(0, 1).Bold(true).Render(fmt.Sprintf(" %d/%d ", m.page, m.pages))
+	navHints := lipgloss.NewStyle().Foreground(lipgloss.Color(cl.Dim)).Render("[ ] page · { } jump")
+
+	return lipgloss.NewStyle().Width(m.width).Render(
+		lipgloss.JoinHorizontal(lipgloss.Top, " ", info, "  ", nav, " ", navHints))
+}
+
+// --- Help overlay ---
+
+func (m Model) renderHelp() string {
+	return m.renderHelpNew()
+}
+
+// --- Startup ---
 
 func (m Model) renderStartupError() string {
 	var b strings.Builder
@@ -108,35 +228,59 @@ func (m Model) renderStartupError() string {
 		b.WriteString("- Ensure Redis is running and reachable on the configured host/port\n")
 		b.WriteString("- Verify username/password and ACL permissions if auth is enabled\n")
 		b.WriteString("- Check TLS settings when using rediss://\n\n")
+	case db.KindMariaDB:
+		b.WriteString("MariaDB quick checks:\n")
+		b.WriteString("- Ensure MariaDB is running and listening on the expected host/port\n")
+		b.WriteString("- If using localhost, try 127.0.0.1 to avoid IPv6/::1 issues\n")
+		b.WriteString("- Verify database/user credentials and grants\n\n")
+	case db.KindCockroachDB:
+		b.WriteString("CockroachDB quick checks:\n")
+		b.WriteString("- Ensure CockroachDB is running and reachable on the configured host/port\n")
+		b.WriteString("- If using localhost, try 127.0.0.1 to avoid IPv6/::1 issues\n")
+		b.WriteString("- Verify database/user credentials and access rules\n\n")
+	case db.KindMSSQL:
+		b.WriteString("MSSQL quick checks:\n")
+		b.WriteString("- Ensure SQL Server is running and reachable on the configured host/port\n")
+		b.WriteString("- Verify the instance name if using a named instance (sqlserver://host/instance)\n")
+		b.WriteString("- Check that TCP/IP connections are enabled in SQL Server Configuration Manager\n\n")
+	case db.KindCassandra:
+		b.WriteString("Cassandra quick checks:\n")
+		b.WriteString("- Ensure Cassandra/ScyllaDB is running and reachable on the configured host/port\n")
+		b.WriteString("- Verify the keyspace name in the connection URI (cassandra://host:9042/keyspace)\n")
+		b.WriteString("- Check username/password if authentication is enabled\n\n")
 	}
 
 	b.WriteString("Press r to retry, q or esc to quit.\n")
 	return b.String()
 }
 
-// --- Header and pagination ---
-
-// renderHelpBar renders a responsive help bar that adapts to screen width.
-func (m Model) renderHelpBar(items []string) string {
+func (m Model) renderLoading() string {
 	cl := m.c()
-	full := " " + strings.Join(items, " • ")
-	// If it fits, return as-is
-	if len(full) <= m.width {
-		return theme.HelpStyle(cl).Render(full)
-	}
-	// Progressive reduction based on width
-	if m.width >= 100 {
-		// Medium: show essential shortcuts
-		medium := []string{"←→ col", "↑↓ scroll", "e edit", "x del", "a add", "E export", "s schema", "/ sql", "? help", "q×2 quit"}
-		return theme.HelpStyle(cl).Render(" " + strings.Join(medium, " • "))
-	}
-	if m.width >= 60 {
-		// Compact: minimal set
-		compact := []string{"e edit", "x del", "s schema", "? help", "q×2 quit"}
-		return theme.HelpStyle(cl).Render(" " + strings.Join(compact, " • "))
-	}
-	// Tiny: just help and quit
-	return theme.HelpStyle(cl).Render(" ? help • q×2 quit")
+
+	header := lipgloss.NewStyle().
+		Background(lipgloss.Color(cl.HeaderBg)).
+		Foreground(lipgloss.Color(cl.HeaderFg)).
+		Bold(true).
+		Width(m.width).
+		Padding(0, 1).
+		Render("dbview · Connecting...")
+
+	spin := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(cl.Accent)).
+		Bold(true).
+		Render(theme.SpinnerFrames[m.spinner]) + " Initializing..."
+
+	centerStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(cl.Dim)).
+		Align(lipgloss.Center).
+		Width(m.width).
+		Padding(2, 0)
+
+	return lipgloss.JoinVertical(lipgloss.Center,
+		header,
+		"\n",
+		centerStyle.Render(spin),
+	)
 }
 
 func (m Model) viewerTitle() string {
@@ -154,214 +298,208 @@ func (m Model) viewerTitle() string {
 		return "MongoDB"
 	case db.KindRedis:
 		return "Redis"
+	case db.KindMariaDB:
+		return "MariaDB"
+	case db.KindCockroachDB:
+		return "CockroachDB"
+	case db.KindMSSQL:
+		return "MSSQL"
+	case db.KindCassandra:
+		return "Cassandra"
 	default:
 		return "dbview"
 	}
 }
 
-func (m Model) header(title string) string {
+// --- Status Bar ---
+
+func (m Model) renderStatusBar() string {
 	cl := m.c()
-	right := ""
-	status := ""
-	if m.status != "" && time.Now().Before(m.flashEnd) {
-		status = "  " + theme.Styled(m.status, cl.Ok)
+
+	var hints []string
+	switch m.view {
+	case ViewTables:
+		hints = []string{"↑↓", "enter", "s schema", "x drop", "F flush", "D stats", "/ sql", "r reload"}
+	case ViewData:
+		hints = []string{"←→ col", "↑↓ scroll", "1-9 sort", "e edit", "x del", "d dup", "a add", "I import", "E export", "c cell", "C row", "[ ] page", "ctrl+f filter", "r reload", "s schema", "/ sql"}
+	case ViewQuery:
+		hints = []string{"↑↓ history", "enter exec", "esc back"}
+	case ViewSearch:
+		hints = []string{"type filter", "enter confirm", "esc clear"}
+	default:
+		hints = []string{"? help", "q×2 quit"}
 	}
-	spinner := ""
-	if m.loading {
-		spinner = " " + theme.SpinnerFrames[m.spinner]
-	}
-	// Calculate title width, ensure right side fits
-	titleStyled := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(cl.Accent)).Render(title)
-	titleLen := len(title) // raw length for measurement
-	rightPart := theme.Styled(right, cl.Dim) + spinner + status
-	rightRaw := right + spinner
-	if m.status != "" && time.Now().Before(m.flashEnd) {
-		rightRaw += "  " + m.status
-	}
-	// Truncate right side if title + right exceeds width
-	avail := m.width - titleLen - 2
-	if avail < 10 {
-		// Truncate title instead
-		if m.width > 20 {
-			truncLen := m.width - len(rightRaw) - 4
-			if truncLen > 0 && truncLen < len(title) {
-				title = table.Trunc(title, truncLen)
-				titleStyled = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(cl.Accent)).Render(title)
-			}
+
+	hasHelp := false
+	hasQuit := false
+	for _, h := range hints {
+		if h == "? help" {
+			hasHelp = true
+		}
+		if h == "q×2 quit" || h == "q quit" {
+			hasQuit = true
 		}
 	}
-	return lipgloss.NewStyle().Width(m.width).Render(
-		lipgloss.JoinHorizontal(lipgloss.Top,
-			titleStyled,
-			rightPart,
-		))
-}
-
-func (m Model) renderPagination() string {
-	if m.activeTbl == "query" || m.pages <= 1 {
-		return ""
+	if !hasHelp {
+		hints = append(hints, "? help")
 	}
-	cl := m.c()
-	from := (m.page-1)*db.PageSize + 1
-	to := min(m.page*db.PageSize, m.totalRows)
-	info := fmt.Sprintf("Rows %d-%d of %d", from, to, m.totalRows)
-	nav := fmt.Sprintf("Page %d/%d", m.page, m.pages)
-	left := " [ ] prev  { } first"
-	right := "[ ] next  { } last"
-	return lipgloss.NewStyle().Width(m.width).Render(
-		lipgloss.JoinHorizontal(lipgloss.Top,
-			theme.Styled(left, cl.Dim),
-			theme.Styled(" "+info+" ", cl.Ok),
-			lipgloss.NewStyle().Foreground(lipgloss.Color(cl.White)).Background(lipgloss.Color(cl.Accent)).Padding(0, 2).Bold(true).Render(nav),
-			theme.Styled(right, cl.Dim),
-		))
-}
+	if !hasQuit {
+		hints = append(hints, "q×2 quit")
+	}
 
-// --- Help overlay ---
+	sep := lipgloss.NewStyle().Foreground(lipgloss.Color(cl.Border)).Render(strings.Repeat("─", m.width))
+	bar := theme.HelpStyle(cl).Render(" " + strings.Join(hints, " · "))
 
-func (m Model) renderHelp() string {
-	cl := m.c()
-	box := lipgloss.NewStyle().
-		Border(lipgloss.DoubleBorder()).
-		BorderForeground(lipgloss.Color(cl.Accent)).
-		Padding(1, 3).
-		Width(m.width - 6).
-		Background(lipgloss.Color(cl.Bg))
-
-	var b strings.Builder
-	b.WriteString(box.Render(
-		lipgloss.JoinVertical(lipgloss.Left,
-			theme.StyledBold(fmt.Sprintf("%s Viewer — Help", m.viewerTitle()), cl.Accent),
-			"",
-			theme.StyledBold("TABLES VIEW", cl.Accent),
-			theme.Styled("  ↑↓/jk     Navigate tables", cl.White),
-			theme.Styled("  enter     Open table data", cl.White),
-			theme.Styled("  s        View schema", cl.White),
-			theme.Styled("  x        Drop table (confirm)", cl.White),
-			theme.Styled("  D        Database stats", cl.White),
-			theme.Styled("  F        Flush table (with confirmation)", cl.White),
-			theme.Styled("  /        SQL query", cl.White),
-			"",
-			theme.StyledBold("DATA VIEW", cl.Accent),
-			theme.Styled("  ←→/hl    Select column", cl.White),
-			theme.Styled("  ↑↓       Scroll rows", cl.White),
-			theme.Styled("  1-9      Sort by column N", cl.White),
-			theme.Styled("  e        Edit cell (confirm)", cl.White),
-			theme.Styled("  x        Delete row (confirm)", cl.White),
-			theme.Styled("  d        Duplicate row", cl.White),
-			theme.Styled("  a        Add row", cl.White),
-			theme.Styled("  I        Import CSV/JSON", cl.White),
-			theme.Styled("  E        Export (CSV/JSON/XLSX/SQL)", cl.White),
-			theme.Styled("  c        Copy cell to clipboard", cl.White),
-			theme.Styled("  C        Copy row to clipboard", cl.White),
-			theme.Styled("  [ ]      Previous/next page", cl.White),
-			theme.Styled("  { }      First/last page", cl.White),
-			theme.Styled("  ctrl+f    Live filter", cl.White),
-			theme.Styled("  s        View schema", cl.White),
-			theme.Styled("  /        SQL query", cl.White),
-			"",
-			theme.StyledBold("QUERY VIEW", cl.Accent),
-			theme.Styled("  ↑/↓      Query history", cl.White),
-			theme.Styled("  enter    Execute query", cl.White),
-			theme.Styled("  esc      Back", cl.White),
-			"",
-			theme.StyledBold("GLOBAL", cl.Accent),
-			theme.Styled("  T        Cycle theme (8 themes)", cl.White),
-			theme.Styled("  M        Toggle mouse capture / terminal select", cl.White),
-			theme.Styled("  ?        This help", cl.White),
-			theme.Styled("  q        Quit", cl.White),
-			theme.Styled("  esc      Go back / cancel", cl.White),
-			theme.Styled("  ctrl+c    Force quit", cl.White),
-		)))
-	return b.String()
+	return sep + "\n" + bar
 }
 
 // --- View renderers ---
 
 func (m Model) renderTables() string {
-	var b strings.Builder
-	b.WriteString(m.header(fmt.Sprintf("%s Viewer — %s", m.viewerTitle(), redactDSN(m.dbPath))))
-	b.WriteString("\n")
 	cl := m.c()
-	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(cl.White)).Bold(true).Render(
-		fmt.Sprintf(" Tables (%d)", len(m.tables))))
-	b.WriteString("\n\n")
+	var b strings.Builder
+
+	b.WriteString(m.renderHeaderBar())
+
 	if len(m.tables) == 0 {
+		var emptyMsg string
 		switch m.driver.Kind() {
 		case db.KindMongoDB:
-			b.WriteString(theme.Styled(" No collections found in this database.", cl.Warn))
-			b.WriteString("\n")
-			b.WriteString(theme.Styled(" Create/import data first, then press r to reopen connection.", cl.Dim))
-			b.WriteString("\n\n")
+			emptyMsg = "No collections found."
 		case db.KindRedis:
-			b.WriteString(theme.Styled(" No keys found in this Redis database.", cl.Warn))
-			b.WriteString("\n")
-			b.WriteString(theme.Styled(" Add keys first, then press r to reopen connection.", cl.Dim))
-			b.WriteString("\n\n")
+			emptyMsg = "No keys found."
+		case db.KindCassandra:
+			emptyMsg = "No tables found."
 		default:
-			b.WriteString(theme.Styled(" No tables found.", cl.Warn))
-			b.WriteString("\n\n")
+			emptyMsg = "No tables found."
+		}
+		emptyStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(cl.Dim)).
+			Align(lipgloss.Center).
+			Width(m.width).
+			Padding(2, 0)
+		b.WriteString("\n")
+		b.WriteString(emptyStyle.Render(emptyMsg))
+		return b.String()
+	}
+
+	// Count label
+	countLabel := "tables"
+	switch m.driver.Kind() {
+	case db.KindMongoDB:
+		countLabel = "collections"
+	case db.KindRedis:
+		countLabel = "keys"
+	}
+	countStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(cl.Dim)).
+		Padding(0, 1)
+	b.WriteString("\n")
+	b.WriteString(countStyle.Render(fmt.Sprintf(" %d %s", len(m.tables), countLabel)))
+	b.WriteString("\n")
+
+	// Calculate name column width for proper alignment
+	nameColW := 0
+	for _, name := range m.tables {
+		if len(name) > nameColW {
+			nameColW = len(name)
 		}
 	}
+	maxNameW := m.width - 20
+	if maxNameW < 10 {
+		maxNameW = 10
+	}
+	if nameColW > maxNameW {
+		nameColW = maxNameW
+	}
+
 	for i, name := range m.tables {
-		prefix := "  "
-		style := lipgloss.NewStyle().Width(m.width - 4)
-		if i == m.cursor {
-			prefix = "> "
-			style = style.Background(lipgloss.Color(cl.Accent)).Foreground(lipgloss.Color(cl.White)).Bold(true).Width(m.width - 4)
-		}
 		rc := m.rowCount(name)
-		b.WriteString(style.Render(fmt.Sprintf("%s%-30s %s", prefix, name, theme.Styled(fmt.Sprintf("(%d rows)", rc), cl.Dim))))
+
+		if i == m.cursor {
+			// Selected row highlight
+			bg := cl.Accent
+			nameCell := lipgloss.NewStyle().
+				Foreground(lipgloss.Color(cl.White)).
+				Bold(true).
+				Width(nameColW).
+				Render(name)
+			rowCell := lipgloss.NewStyle().
+				Foreground(lipgloss.Color(cl.White)).
+				Render(fmt.Sprintf("%d rows", rc))
+
+			rowStyle := lipgloss.NewStyle().
+				Background(lipgloss.Color(bg)).
+				Foreground(lipgloss.Color(cl.White)).
+				Bold(true).
+				Padding(0, 1)
+
+			b.WriteString(rowStyle.Render("▶ " + nameCell + "  " + rowCell))
+		} else {
+			nameCell := lipgloss.NewStyle().
+				Foreground(lipgloss.Color(cl.HeaderFg)).
+				Width(nameColW).
+				Render(name)
+			rowCell := lipgloss.NewStyle().
+				Foreground(lipgloss.Color(cl.Dim)).
+				Render(fmt.Sprintf("%d rows", rc))
+
+			b.WriteString(lipgloss.NewStyle().Padding(0, 2).Render("  " + nameCell + "  " + rowCell))
+		}
 		b.WriteString("\n")
 	}
-	b.WriteString(theme.HelpStyle(cl).Render(" ↑↓ navigate • enter data • s schema • x drop • F flush • D stats • / sql • r reload • ? help • q×2 quit"))
+
 	return b.String()
 }
 
 func (m Model) renderData() string {
-	var b strings.Builder
 	cl := m.c()
-	label := m.activeTbl
-	if len(m.searches) > 0 {
-		filtered := m.filteredRows()
-		quoted := make([]string, len(m.searches))
-		for i, s := range m.searches {
-			quoted[i] = fmt.Sprintf("%q", s)
-		}
-		label = fmt.Sprintf("%s [filter: %s] (%d/%d)", m.activeTbl, strings.Join(quoted, " + "), len(filtered), len(m.allRows))
-	}
-	b.WriteString(m.header(fmt.Sprintf("Data — %s", label)))
-	b.WriteString("\n")
+	var b strings.Builder
+
+	b.WriteString(m.renderHeaderBar())
+
+	// Sort/column info bar
+	var infoParts []string
 	if m.sortCol >= 0 && m.sortCol < len(m.dataCols) {
 		dir := "ASC"
 		if !m.sortAsc {
 			dir = "DESC"
 		}
-		b.WriteString(theme.Styled(fmt.Sprintf(" Sort: %s %s", m.dataCols[m.sortCol], dir), cl.Dim))
-		b.WriteString("\n")
+		infoParts = append(infoParts, fmt.Sprintf("sort: %s %s", m.dataCols[m.sortCol], dir))
 	}
 	if m.colCursor >= 0 && m.colCursor < len(m.dataCols) {
-		b.WriteString(theme.Styled(fmt.Sprintf(" Col: %s", m.dataCols[m.colCursor]), cl.Warn))
-		b.WriteString("\n")
+		infoParts = append(infoParts, fmt.Sprintf("col: %s", m.dataCols[m.colCursor]))
 	}
-	// Theme-aware border (fixes bug where only "light" theme got colored borders)
+	if len(infoParts) > 0 {
+		infoStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(cl.Dim)).
+			Padding(0, 1)
+		b.WriteString("\n")
+		b.WriteString(infoStyle.Render("  " + strings.Join(infoParts, " · ")))
+	}
+
+	b.WriteString("\n\n")
+
 	bs := theme.BorderedTable(cl)
 	b.WriteString(bs.Render(m.dataTbl.View()))
+
 	b.WriteString("\n")
 	b.WriteString(m.renderPagination())
+
 	if m.activeTbl != "query" && m.pages > 1 {
 		b.WriteString("\n")
 	}
-	helps := []string{"←→ col", "↑↓ scroll", "1-9 sort", "e edit", "x del", "d dup", "a add", "I import", "E export", "c cell", "C row", "[ ] page", "ctrl+f filter", "r reload", "s schema", "/ sql", "? help", "q×2 quit"}
-	b.WriteString(m.renderHelpBar(helps))
+
 	return b.String()
 }
 
 func (m Model) renderSchema() string {
-	var b strings.Builder
 	cl := m.c()
-	b.WriteString(m.header(fmt.Sprintf("Schema — %s", m.activeTbl)))
+	var b strings.Builder
+
+	b.WriteString(m.renderHeaderBar())
 	b.WriteString("\n")
+
 	info := m.schema[m.activeTbl]
 	widths := []int{5, 0, 15, 9, 12, 20}
 	totalFixed := 5 + 15 + 9 + 12 + 20 + 20
@@ -425,14 +563,14 @@ func (m Model) renderSchema() string {
 			b.WriteString("  • " + label + "\n")
 		}
 	}
-	b.WriteString(theme.HelpStyle(cl).Render(" esc back • d data • r reload • / sql • ? help • q×2 quit"))
+	b.WriteString(theme.HelpStyle(cl).Render(" esc back · d data · r reload · / sql · ? help · q×2 quit"))
 	return b.String()
 }
 
 func (m Model) renderStats() string {
-	var b strings.Builder
 	cl := m.c()
-	b.WriteString(m.header("Database Stats"))
+	var b strings.Builder
+	b.WriteString(m.renderHeaderBar())
 	b.WriteString("\n")
 	printRow := func(cols []string) {
 		for _, c := range cols {
@@ -474,13 +612,17 @@ func (m Model) renderStats() string {
 		}
 		printRow([]string{tbl, fmt.Sprintf("%d", rc), sz})
 	}
-	b.WriteString(theme.HelpStyle(cl).Render(" esc back • ? help • q×2 quit"))
+	b.WriteString(theme.HelpStyle(cl).Render(" esc back · ? help · q×2 quit"))
 	return b.String()
 }
 
 func (m Model) renderQuery() string {
-	var b strings.Builder
 	cl := m.c()
+	var b strings.Builder
+
+	b.WriteString(m.renderHeaderBar())
+	b.WriteString("\n")
+
 	title := "SQL Query"
 	prompt := " Enter SQL and press Enter to execute | Up/Down: history"
 	ctxLabel := ""
@@ -495,10 +637,13 @@ func (m Model) renderQuery() string {
 		case db.KindRedis:
 			title = "Redis Command"
 			prompt = " Enter Redis command (GET/SET/DEL/KEYS/HGETALL/LRANGE/SMEMBERS/ZRANGE)"
+		case db.KindCassandra:
+			title = "CQL Query"
+			prompt = " Enter CQL query (SELECT, INSERT, UPDATE, DELETE, TABLES)"
 		}
 	}
-	b.WriteString(m.header(title + ctxLabel))
-	b.WriteString("\n")
+	_ = title + ctxLabel // consumed by header bar via viewTitle
+
 	b.WriteString(theme.WarnStyle(cl).Render(prompt))
 	b.WriteString("\n")
 	driverKind := ""
@@ -517,21 +662,21 @@ func (m Model) renderQuery() string {
 		b.WriteString("\n")
 	}
 	if len(m.dataCols) > 0 {
-		// Theme-aware border (fixes bug where only "light" theme got colored borders)
 		bs := theme.BorderedTable(cl)
 		b.WriteString(bs.Render(m.dataTbl.View()))
 		b.WriteString("\n")
 		b.WriteString(theme.OkStyle(cl).Render(fmt.Sprintf(" %d row(s)", len(m.allRows))))
 		b.WriteString("\n")
 	}
-	b.WriteString(theme.HelpStyle(cl).Render(" enter execute • ↑↓ history • esc back • ? help • q×2 quit"))
+	b.WriteString(theme.HelpStyle(cl).Render(" enter execute · ↑↓ history · esc back · ? help · q×2 quit"))
 	return b.String()
 }
 
 func (m Model) renderSearch() string {
-	var b strings.Builder
 	cl := m.c()
-	b.WriteString(m.header(fmt.Sprintf("Filter — %s", m.activeTbl)))
+	var b strings.Builder
+
+	b.WriteString(m.renderHeaderBar())
 	b.WriteString("\n")
 	b.WriteString(theme.WarnStyle(cl).Render(" Type to filter rows. Use + to separate terms. Enter to confirm."))
 	b.WriteString("\n")
@@ -554,11 +699,10 @@ func (m Model) renderSearch() string {
 	filtered := m.filteredRows()
 	b.WriteString(theme.DimStyle(cl).Render(fmt.Sprintf(" %d/%d rows match", len(filtered), len(m.allRows))))
 	b.WriteString("\n")
-	// Theme-aware border (fixes bug where only "light" theme got colored borders)
 	bs := theme.BorderedTable(cl)
 	b.WriteString(bs.Render(m.dataTbl.View()))
 	b.WriteString("\n")
-	helps := " enter add filter • ↑↓ history • esc clear all • ctrl+d remove last • ? help • q×2 quit"
+	helps := " enter add filter · ↑↓ history · esc clear all · ctrl+d remove last · ? help · q×2 quit"
 	b.WriteString(theme.HelpStyle(cl).Render(helps))
 	return b.String()
 }
@@ -566,16 +710,15 @@ func (m Model) renderSearch() string {
 // --- Query Log View ---
 
 func (m Model) renderQueryLog() string {
-	var b strings.Builder
 	cl := m.c()
-	b.WriteString(m.header("Query Log"))
+	var b strings.Builder
+	b.WriteString(m.renderHeaderBar())
 	b.WriteString("\n")
 	entries := m.queryLog.Entries
 	if len(entries) == 0 {
 		b.WriteString(theme.DimStyle(cl).Render(" No queries logged yet.\n Execute some operations (edit, insert, delete, etc.) to see them here."))
 		b.WriteString("\n")
 	} else {
-		// Show entries in reverse chronological order
 		for i := len(entries) - 1; i >= 0; i-- {
 			e := entries[i]
 			isSelected := (len(entries) - 1 - i) == m.logCursor
@@ -583,9 +726,13 @@ func (m Model) renderQueryLog() string {
 			style := lipgloss.NewStyle().Width(m.width - 4)
 			if isSelected {
 				prefix = "> "
-				style = style.Background(lipgloss.Color(cl.Accent)).Foreground(lipgloss.Color(cl.White)).Bold(true).Width(m.width - 4)
+				bg := cl.Accent
+				style = lipgloss.NewStyle().
+					Background(lipgloss.Color(bg)).
+					Foreground(lipgloss.Color(cl.White)).
+					Bold(true).
+					Width(m.width - 4)
 			}
-			// Operation badge
 			opColor := cl.Ok
 			switch e.Operation {
 			case "DELETE", "DROP":
@@ -608,7 +755,6 @@ func (m Model) renderQueryLog() string {
 			line := fmt.Sprintf("%s %s %s%s  %s", prefix, ts, opBadge, errMark, dur)
 			b.WriteString(style.Render(line))
 			b.WriteString("\n")
-			// Show query preview (first line)
 			if isSelected && m.logExpand {
 				queryLines := strings.SplitSeq(e.Query, "\n")
 				for ql := range queryLines {
@@ -624,7 +770,6 @@ func (m Model) renderQueryLog() string {
 					b.WriteString("\n")
 				}
 			} else {
-				// Show truncated query preview
 				preview := e.Query
 				if idx := strings.Index(preview, "\n"); idx >= 0 {
 					preview = preview[:idx]
@@ -637,18 +782,17 @@ func (m Model) renderQueryLog() string {
 			}
 		}
 	}
-	b.WriteString(theme.HelpStyle(cl).Render(" ↑↓ navigate • enter expand • esc back • ? help • q×2 quit"))
+	b.WriteString(theme.HelpStyle(cl).Render(" ↑↓ navigate · enter expand · esc back · ? help · q×2 quit"))
 	return b.String()
 }
 
 // --- Detail View ---
 
 func (m Model) renderDetail() string {
-	var b strings.Builder
 	cl := m.c()
-	b.WriteString(m.header(fmt.Sprintf("Detail — %s (row %d/%d)", m.activeTbl, m.logCursor+1, m.totalRows)))
+	var b strings.Builder
+	b.WriteString(m.renderHeaderBar())
 	b.WriteString("\n")
-	// Show current row as key-value pairs
 	if m.logCursor >= 0 && m.logCursor < len(m.allRows) {
 		row := m.allRows[m.logCursor]
 		maxNameW := 0
@@ -673,7 +817,7 @@ func (m Model) renderDetail() string {
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
-	b.WriteString(theme.HelpStyle(cl).Render(" ↑↓ navigate rows • esc back • ? help • q×2 quit"))
+	b.WriteString(theme.HelpStyle(cl).Render(" ↑↓ navigate rows · esc back · ? help · q×2 quit"))
 	return b.String()
 }
 
@@ -698,7 +842,7 @@ func (m Model) renderDialog() string {
 				theme.WarnStyle(cl).Bold(true).Render(">> "+d.Title),
 				"", d.Body, "",
 				lipgloss.NewStyle().Foreground(lipgloss.Color(cl.White)).Render("> "+renderInputWithCursor(d.Input, d.Cursor)),
-				"", theme.DimStyle(cl).Render("enter confirm • esc cancel"),
+				"", theme.DimStyle(cl).Render("enter confirm · esc cancel"),
 			),
 		)
 		return lipgloss.NewStyle().MarginTop(1).Render(box)
@@ -721,7 +865,7 @@ func (m Model) renderDialog() string {
 				theme.WarnStyle(cl).Bold(true).Render("++ "+d.Title),
 				"", d.Body, "",
 				lipgloss.NewStyle().Foreground(lipgloss.Color(cl.White)).Render("> "+renderInputWithCursor(d.Input, d.Cursor)),
-				"", theme.DimStyle(cl).Render("enter confirm • esc cancel"),
+				"", theme.DimStyle(cl).Render("enter confirm · esc cancel"),
 			),
 		)
 		return lipgloss.NewStyle().MarginTop(1).Render(box)
@@ -740,7 +884,7 @@ func (m Model) renderDialog() string {
 				theme.WarnStyle(cl).Bold(true).Render(">> "+d.Title),
 				"", d.Body, "",
 				lipgloss.NewStyle().Foreground(lipgloss.Color(cl.White)).Render("> "+renderInputWithCursor(d.Input, d.Cursor)),
-				"", theme.DimStyle(cl).Render("enter import • esc cancel"),
+				"", theme.DimStyle(cl).Render("enter import · esc cancel"),
 			),
 		)
 		return lipgloss.NewStyle().MarginTop(1).Render(box)

@@ -210,10 +210,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case TickMsg:
 		m.spinner = (m.spinner + 1) % len(theme.SpinnerFrames)
-		if m.loading {
-			return m, doTick()
-		}
-		return m, nil
+		return m, doTick()
 
 	case NotifyMsg:
 		m.loading = false
@@ -551,6 +548,40 @@ func (m Model) updateDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					return m, func() tea.Msg {
 						start := time.Now()
 						n, err := rd.InsertEntry(m.ctx, m.activeTbl, cols, vals)
+						logEntry.Duration = time.Since(start)
+						if err != nil {
+							logEntry.Error = err
+							m.queryLog.Add(logEntry)
+							return ErrMsg{Err: err}
+						}
+						logEntry.RowsAffected = n
+						m.queryLog.Add(logEntry)
+						return QueryResult{Affected: n}
+					}
+				case db.KindCassandra:
+					cd, ok := m.driver.(*db.CassandraDriver)
+					if !ok {
+						m.dialog = Dialog{}
+						return m.setStatus("Internal error: cassandra driver mismatch"), nil
+					}
+					vals := make([]string, len(cols))
+					for i := range cols {
+						if i < len(fields) {
+							vals[i] = fields[i]
+						} else {
+							vals[i] = "NULL"
+						}
+					}
+					logEntry := db.QueryLogEntry{
+						Timestamp: time.Now(),
+						Operation: "INSERT",
+						Table:     m.activeTbl,
+						Query:     fmt.Sprintf("CASSANDRA INSERT INTO %s", m.activeTbl),
+					}
+					m.dialog = Dialog{}
+					return m, func() tea.Msg {
+						start := time.Now()
+						n, err := cd.InsertRow(m.ctx, m.activeTbl, cols, vals)
 						logEntry.Duration = time.Since(start)
 						if err != nil {
 							logEntry.Error = err
@@ -905,6 +936,8 @@ func (m Model) updateData(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					return m.setStatus("Duplicate row is not supported for MongoDB yet"), nil
 				case db.KindRedis:
 					return m.setStatus("Duplicate row is not supported for Redis yet"), nil
+				case db.KindCassandra:
+					return m.setStatus("Duplicate row is not supported for Cassandra yet"), nil
 				}
 			}
 			cursor := m.dataTbl.Cursor()
@@ -985,6 +1018,9 @@ func (m Model) updateData(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				case db.KindRedis:
 					title = fmt.Sprintf("ADD ENTRY %s", m.activeTbl)
 					body += "\nTip: key is required; ttl is seconds; use member/score for set/zset"
+				case db.KindCassandra:
+					title = fmt.Sprintf("INSERT ROW %s", m.activeTbl)
+					body += "\nTip: partition key columns are required; values auto-parsed"
 				}
 			}
 			input := strings.Join(ph, ",")
@@ -1425,6 +1461,17 @@ func isDestructiveQueryForDriver(d db.Driver, q string) bool {
 		}
 		return false
 
+	case db.KindCassandra:
+		prefixes := []string{
+			"INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "TRUNCATE",
+			"CREATE",
+		}
+		for _, p := range prefixes {
+			if strings.HasPrefix(upper, p) {
+				return true
+			}
+		}
+		return false
 	default:
 		return isDestructiveQuery(q)
 	}
