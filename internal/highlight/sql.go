@@ -59,6 +59,17 @@ var sqlKeywords = map[string]struct{}{
 	"ABSOLUTE": {}, "RELATIVE": {}, "SCROLL": {}, "NO": {}, "CURSOR": {},
 	"FOR": {}, "GRANT": {}, "REVOKE": {}, "PRIVILEGES": {},
 	"USING": {},
+	"EXEC":  {}, "EXECUTE": {}, "PROC": {}, "PROCEDURE": {}, "GO": {},
+	"DECLARE": {}, "PRINT": {}, "WHILE": {}, "BREAK": {}, "CONTINUE": {},
+	"GOTO": {}, "WAITFOR": {}, "TRY": {}, "CATCH": {}, "THROW": {}, "RAISERROR": {},
+	"MERGE": {}, "OUTPUT": {}, "INSERTED": {}, "DELETED": {},
+	"IDENTITY": {}, "SCOPE_IDENTITY": {}, "@@IDENTITY": {},
+	"NOCOUNT": {}, "NVARCHAR": {}, "NCHAR": {}, "NTEXT": {},
+	"MONEY": {}, "SMALLMONEY": {}, "BIT": {}, "UNIQUEIDENTIFIER": {},
+	"XML": {}, "VARBINARY": {}, "IMAGE": {},
+	"ISNULL": {}, "IIF": {}, "CHOOSE": {}, "TRY_CAST": {},
+	"TRY_CONVERT": {}, "FORMAT": {}, "STRING_AGG": {},
+	"APPLY": {}, "PIVOT": {}, "UNPIVOT": {},
 }
 
 // mongoKeywords covers MongoDB shell commands and operators.

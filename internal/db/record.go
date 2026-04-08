@@ -10,7 +10,7 @@ import (
 type ValueKind string
 
 const (
-	ValueNull    ValueKind = "null"
+	ValueNull   ValueKind = "null"
 	ValueString ValueKind = "string"
 	ValueNumber ValueKind = "number"
 	ValueBool   ValueKind = "bool"
@@ -21,8 +21,8 @@ const (
 // StructuredValue holds a formatted value in multiple representations.
 type StructuredValue struct {
 	Raw     interface{} // original value
-	Display string   // formatted for TUI cell (truncated)
-	Detail  string   // expanded view (full detail)
+	Display string      // formatted for TUI cell (truncated)
+	Detail  string      // expanded view (full detail)
 	Kind    ValueKind
 }
 
@@ -89,7 +89,7 @@ type RecordView struct {
 	Fields     []FieldDefinition
 	Values     []StructuredValue
 	DocumentID interface{} // MongoDB
-	Key        string   // Redis
+	Key        string      // Redis
 	TTL        time.Duration
 	RedisType  string
 }
@@ -107,12 +107,12 @@ func NewRecordView(kind TableKind, fields []FieldDefinition, values []interface{
 type QueryLogEntry struct {
 	Timestamp    time.Time
 	Operation    string // "INSERT", "UPDATE", "DELETE", "SELECT", "DROP"
-	Table       string // table/collection/key name
-	Query       string // the actual query/command executed
-	NativeQuery string // database-native representation
+	Table        string // table/collection/key name
+	Query        string // the actual query/command executed
+	NativeQuery  string // database-native representation
 	RowsAffected int64
 	Duration     time.Duration
-	Error       error
+	Error        error
 }
 
 // QueryLog is a ring buffer of query log entries.

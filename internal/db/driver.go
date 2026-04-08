@@ -9,7 +9,8 @@ import (
 )
 
 // Driver is the unified interface for all database backends.
-// Each database type (SQLite, MySQL, PostgreSQL, MongoDB, Redis) implements this.
+// Each database type (SQLite, MySQL, MariaDB, PostgreSQL, CockroachDB,
+// MSSQL, MongoDB, Redis) implements this.
 type Driver interface {
 	// Open establishes a connection to the database.
 	Open(ctx context.Context, dsn string) error
@@ -47,7 +48,15 @@ type Driver interface {
 
 // DetectDriver determines the driver kind and cleaned DSN from a connection string.
 func DetectDriver(dsn string) (DataSourceKind, string) {
-	// Check for URL-style connection strings
+	if strings.HasPrefix(dsn, "mariadb://") {
+		return KindMariaDB, dsn
+	}
+	if strings.HasPrefix(dsn, "cockroach://") || strings.HasPrefix(dsn, "cockroachdb://") {
+		return KindCockroachDB, dsn
+	}
+	if strings.HasPrefix(dsn, "sqlserver://") || strings.HasPrefix(dsn, "mssql://") {
+		return KindMSSQL, dsn
+	}
 	if strings.HasPrefix(dsn, "mysql://") {
 		return KindMySQL, dsn
 	}
@@ -60,7 +69,9 @@ func DetectDriver(dsn string) (DataSourceKind, string) {
 	if strings.HasPrefix(dsn, "redis://") || strings.HasPrefix(dsn, "rediss://") {
 		return KindRedis, dsn
 	}
-	// Default: SQLite (bare file path)
+	if strings.HasPrefix(dsn, "cassandra://") {
+		return KindCassandra, dsn
+	}
 	return KindSQLite, dsn
 }
 
@@ -73,12 +84,20 @@ func OpenDriver(ctx context.Context, dsn string) (Driver, error) {
 		d = &SQLiteDriver{}
 	case KindMySQL:
 		d = &MySQLDriver{}
+	case KindMariaDB:
+		d = &MariaDBDriver{}
 	case KindPostgreSQL:
 		d = &PostgreSQLDriver{}
+	case KindCockroachDB:
+		d = &CockroachDBDriver{}
+	case KindMSSQL:
+		d = &MSSQLDriver{}
 	case KindMongoDB:
 		d = &MongoDriver{}
 	case KindRedis:
 		d = &RedisDriver{}
+	case KindCassandra:
+		d = &CassandraDriver{}
 	default:
 		return nil, fmt.Errorf("unsupported driver: %s", kind)
 	}
@@ -98,4 +117,10 @@ func ParseDSN(dsn string) (scheme, host, database string, err error) {
 	host = u.Host
 	database = strings.TrimPrefix(u.Path, "/")
 	return
+}
+
+// replaceLocalhost substitutes "localhost" with "127.0.0.1" in the host portion
+// of a URL-style DSN to avoid IPv6/::1 connection issues.
+func replaceLocalhost(dsn string) string {
+	return strings.Replace(dsn, "@localhost", "@127.0.0.1", 1)
 }

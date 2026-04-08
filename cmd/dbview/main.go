@@ -199,7 +199,7 @@ func runSelfUpdate() error {
 	}
 	tmpFile.Close()
 
-	if err := os.Chmod(tmpPath, 0755); err != nil {
+	if err := os.Chmod(tmpPath, 0o755); err != nil {
 		return fmt.Errorf("chmod: %w", err)
 	}
 
@@ -366,7 +366,10 @@ USAGE
 DATABASES
   SQLite       dbview ./mydb.db
   MySQL        dbview mysql://user:pass@host:3306/dbname
+  MariaDB      dbview mariadb://user:pass@host:3306/dbname
   PostgreSQL   dbview postgres://user:pass@host:5432/dbname
+  CockroachDB  dbview cockroachdb://user:pass@host:26257/dbname
+  MSSQL        dbview sqlserver://user:pass@host:1433/dbname
   MongoDB      dbview mongodb://host:27017/dbname
   Redis        dbview redis://host:6379
 

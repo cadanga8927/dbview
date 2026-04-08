@@ -8,11 +8,15 @@ import (
 type DataSourceKind string
 
 const (
-	KindSQLite     DataSourceKind = "sqlite"
-	KindMySQL      DataSourceKind = "mysql"
-	KindPostgreSQL DataSourceKind = "postgresql"
-	KindMongoDB    DataSourceKind = "mongodb"
-	KindRedis      DataSourceKind = "redis"
+	KindSQLite      DataSourceKind = "sqlite"
+	KindMySQL       DataSourceKind = "mysql"
+	KindMariaDB     DataSourceKind = "mariadb"
+	KindPostgreSQL  DataSourceKind = "postgresql"
+	KindCockroachDB DataSourceKind = "cockroachdb"
+	KindMSSQL       DataSourceKind = "mssql"
+	KindMongoDB     DataSourceKind = "mongodb"
+	KindRedis       DataSourceKind = "redis"
+	KindCassandra   DataSourceKind = "cassandra"
 )
 
 // TableKind identifies the data model of a table/collection.
@@ -38,7 +42,7 @@ const (
 // DataSource represents the connected database.
 type DataSource struct {
 	Kind DataSourceKind
-	Name string    // display name (filename, db name, etc.)
+	Name string // display name (filename, db name, etc.)
 }
 
 // TableSchema describes a table/collection/keyspace.

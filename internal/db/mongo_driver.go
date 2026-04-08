@@ -133,9 +133,9 @@ func (d *MongoDriver) LoadIndices(ctx context.Context, table string) ([]IndexInf
 	var indices []IndexInfo
 	for cursor.Next(ctx) {
 		var idxDoc struct {
-			Name   string   `bson:"name"`
-			Key    bson.M   `bson:"key"`
-			Unique bool     `bson:"unique"`
+			Name   string `bson:"name"`
+			Key    bson.M `bson:"key"`
+			Unique bool   `bson:"unique"`
 		}
 		if cursor.Decode(&idxDoc) != nil {
 			continue
