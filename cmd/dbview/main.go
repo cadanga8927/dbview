@@ -19,12 +19,12 @@ import (
 	"github.com/pageton/dbview/internal/db"
 )
 
-var version = "0.1.8"
+var version = "0.1.9"
 
 const releaseAPIURL = "https://api.github.com/repos/pageton/dbview/releases/latest"
 
 type latestRelease struct {
-	TagName string       `json:"tag_name"`
+	TagName string         `json:"tag_name"`
 	Assets  []releaseAsset `json:"assets"`
 }
 

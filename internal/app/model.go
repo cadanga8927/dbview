@@ -27,53 +27,53 @@ const startupTimeout = 10 * time.Second
 
 // Model is the main Bubble Tea model for the app.
 type Model struct {
-	driver       db.Driver
-	ctx          context.Context
-	cancel       context.CancelFunc
-	tables       []string
-	schema       map[string][]db.ColInfo
-	fks          map[string][]db.FKInfo
-	view         ViewMode
-	cursor       int
-	dbPath       string
-	query        string
-	queryCursor  int
-	searches     []string
-	searchInput  string
-	searchCursor int
-	searchHist   []string
-	sHistIdx     int
-	dataTbl      btable.Model
-	activeTbl    string
-	dataCols     []string
-	allRows      [][]string
-	totalRows    int
-	sortCol      int
-	sortAsc      bool
-	affected     int64
-	err          error
-	width        int
-	height       int
-	ready        bool
-	dialog       Dialog
-	status       string
-	page         int
-	pages        int
-	colCursor    int
-	theme        string
-	helpVis      bool
-	queryHist    []string
-	qHistIdx     int
-	spinner      int
-	loading      bool
-	flash        string
-	flashEnd     time.Time
-	dbFileSize   string
-	dbFileHash   string
-	queryLog     db.QueryLog
-	prevView     ViewMode
-	logCursor    int
-	logExpand    bool
+	driver        db.Driver
+	ctx           context.Context
+	cancel        context.CancelFunc
+	tables        []string
+	schema        map[string][]db.ColInfo
+	fks           map[string][]db.FKInfo
+	view          ViewMode
+	cursor        int
+	dbPath        string
+	query         string
+	queryCursor   int
+	searches      []string
+	searchInput   string
+	searchCursor  int
+	searchHist    []string
+	sHistIdx      int
+	dataTbl       btable.Model
+	activeTbl     string
+	dataCols      []string
+	allRows       [][]string
+	totalRows     int
+	sortCol       int
+	sortAsc       bool
+	affected      int64
+	err           error
+	width         int
+	height        int
+	ready         bool
+	dialog        Dialog
+	status        string
+	page          int
+	pages         int
+	colCursor     int
+	theme         string
+	helpVis       bool
+	queryHist     []string
+	qHistIdx      int
+	spinner       int
+	loading       bool
+	flash         string
+	flashEnd      time.Time
+	dbFileSize    string
+	dbFileHash    string
+	queryLog      db.QueryLog
+	prevView      ViewMode
+	logCursor     int
+	logExpand     bool
 	mouseOn       bool
 	lastQuitPress time.Time
 }
@@ -410,6 +410,21 @@ func (m Model) execQuery(q string) tea.Cmd {
 				}
 				return QueryResult{Affected: affected}
 			}
+		}
+
+		if isDestructiveQuery(q) {
+			res, execErr := m.driver.Exec(m.ctx, q)
+			logEntry.Duration = time.Since(logEntry.Timestamp)
+			if execErr != nil {
+				logEntry.Error = execErr
+				m.queryLog.Add(logEntry)
+				return ErrMsg{Err: execErr}
+			}
+			n, _ := res.RowsAffected()
+			logEntry.Operation = "EXEC"
+			logEntry.RowsAffected = n
+			m.queryLog.Add(logEntry)
+			return QueryResult{Affected: n}
 		}
 
 		rows, err := m.driver.Query(m.ctx, q)
