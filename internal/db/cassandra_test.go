@@ -53,7 +53,7 @@ func TestCassandraDriver_Integration(t *testing.T) {
 	d := &CassandraDriver{}
 	err := d.Open(ctx, "cassandra://127.0.0.1:9042/testdb")
 	if err != nil {
-		t.Fatalf("open: %v", err)
+		t.Skipf("skipping: cassandra not available: %v", err)
 	}
 	defer func() { _ = d.Close() }()
 
