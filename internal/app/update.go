@@ -21,26 +21,6 @@ func keyText(msg tea.KeyMsg) string {
 	return string(msg.Runes)
 }
 
-func trimLastRune(s string) string {
-	r := []rune(s)
-	if len(r) == 0 {
-		return s
-	}
-	return string(r[:len(r)-1])
-}
-
-func trimLastWord(s string) string {
-	r := []rune(s)
-	end := len(r)
-	for end > 0 && unicode.IsSpace(r[end-1]) {
-		end--
-	}
-	for end > 0 && !unicode.IsSpace(r[end-1]) {
-		end--
-	}
-	return string(r[:end])
-}
-
 func runeLen(s string) int {
 	return len([]rune(s))
 }
@@ -239,7 +219,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.cancel()
 				}
 				if m.driver != nil {
-					m.driver.Close()
+					_ = m.driver.Close()
 				}
 				return m, tea.Quit
 			}
@@ -257,7 +237,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cancel()
 			}
 			if m.driver != nil {
-				m.driver.Close()
+				_ = m.driver.Close()
 			}
 			return m, tea.Quit
 		}
@@ -697,7 +677,7 @@ func (m Model) quitOnDoublePress() (tea.Model, tea.Cmd) {
 			m.cancel()
 		}
 		if m.driver != nil {
-			m.driver.Close()
+			_ = m.driver.Close()
 		}
 		return m, tea.Quit
 	}
@@ -758,7 +738,7 @@ func (m Model) updateTables(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 						m.fks = make(map[string][]db.FKInfo)
 						rows, err := m.driver.Query(m.ctx, "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
 						if err == nil {
-							defer rows.Close()
+							defer func() { _ = rows.Close() }()
 							for rows.Next() {
 								var name string
 								if rows.Scan(&name) == nil {
@@ -821,7 +801,11 @@ func (m Model) updateTables(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 							Timestamp: time.Now(), Operation: "FLUSH", Table: tbl,
 							Query: logQ, Duration: dur,
 						})
-						return NotifyMsg{Msg: fmt.Sprintf("Table %q flushed (%d rows deleted)", tbl, rc)}
+						cols, data, total, loadErr := m.driver.LoadTableData(m.ctx, tbl, 1, db.PageSize)
+						if loadErr != nil {
+							return ErrMsg{Err: loadErr}
+						}
+						return DataLoaded{Cols: cols, Rows: data, Total: total, TblName: tbl, Page: 1}
 					}
 				},
 			}
@@ -922,7 +906,11 @@ func (m Model) updateData(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 							Timestamp: time.Now(), Operation: "DELETE", Table: tbl,
 							Query: logQ, Duration: dur,
 						})
-						return NotifyMsg{Msg: "Row deleted"}
+						cols, data, total, loadErr := m.driver.LoadTableData(m.ctx, tbl, m.page, db.PageSize)
+						if loadErr != nil {
+							return ErrMsg{Err: loadErr}
+						}
+						return DataLoaded{Cols: cols, Rows: data, Total: total, TblName: tbl, Page: m.page}
 					}
 				},
 			}
