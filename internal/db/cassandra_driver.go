@@ -230,7 +230,7 @@ func (d *CassandraDriver) LoadTableData(ctx context.Context, table string, page,
 	iter := d.session.Query(countQ).Iter()
 	for iter.Scan(&count) {
 	}
-	iter.Close()
+	_ = iter.Close()
 	total = count
 
 	// Fetch page — Cassandra uses LIMIT only (no OFFSET), so we fetch all up to the needed range
@@ -265,7 +265,7 @@ func (d *CassandraDriver) RowCount(ctx context.Context, table string) (int, erro
 	iter := d.session.Query(q).Iter()
 	for iter.Scan(&count) {
 	}
-	iter.Close()
+	_ = iter.Close()
 	return count, nil
 }
 
@@ -283,7 +283,7 @@ func (d *CassandraDriver) LoadIndices(ctx context.Context, table string) ([]Inde
 			Unique: false,
 		})
 	}
-	iter.Close()
+	_ = iter.Close()
 	return indices, nil
 }
 

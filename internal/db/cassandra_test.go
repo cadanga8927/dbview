@@ -55,7 +55,7 @@ func TestCassandraDriver_Integration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	defer d.Close()
+	defer func() { _ = d.Close() }()
 
 	// Test Ping
 	if err := d.Ping(ctx); err != nil {

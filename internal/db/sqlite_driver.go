@@ -78,8 +78,8 @@ func (d *SQLiteDriver) LoadTableData(ctx context.Context, table string, page, pa
 	r, qerr := d.db.QueryContext(ctx, fmt.Sprintf("SELECT COUNT(*) FROM %s", d.QuoteIdent(table)))
 	if qerr == nil {
 		r.Next()
-		r.Scan(&total)
-		r.Close()
+		_ = r.Scan(&total)
+		_ = r.Close()
 	}
 
 	// Fetch page
@@ -89,7 +89,7 @@ func (d *SQLiteDriver) LoadTableData(ctx context.Context, table string, page, pa
 	if qerr != nil {
 		return nil, nil, 0, qerr
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	realCols, _ := r.Columns()
 	data, _, _ := ScanRows(r, len(realCols))
@@ -115,7 +115,7 @@ func (d *SQLiteDriver) RowCount(ctx context.Context, table string) (int, error) 
 		return 0, err
 	}
 	rows.Next()
-	rows.Scan(&n)
-	rows.Close()
+	_ = rows.Scan(&n)
+	_ = rows.Close()
 	return n, nil
 }

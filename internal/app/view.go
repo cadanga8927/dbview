@@ -603,9 +603,9 @@ func (m Model) renderStats() string {
 		szRows, szErr := m.driver.Query(m.ctx, fmt.Sprintf("SELECT SUM(pgsize) FROM dbstat WHERE name=%q", tbl))
 		if szErr == nil {
 			if szRows.Next() {
-				szRows.Scan(&sz)
+				_ = szRows.Scan(&sz)
 			}
-			szRows.Close()
+			_ = szRows.Close()
 		}
 		if sz == "" {
 			sz = "—"

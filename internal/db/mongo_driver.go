@@ -60,7 +60,7 @@ func (d *MongoDriver) ListTables(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 	var names []string
 	for cursor.Next(ctx) {
 		var result struct {
@@ -129,7 +129,7 @@ func (d *MongoDriver) LoadIndices(ctx context.Context, table string) ([]IndexInf
 	if err != nil {
 		return nil, err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 	var indices []IndexInfo
 	for cursor.Next(ctx) {
 		var idxDoc struct {
@@ -168,7 +168,7 @@ func (d *MongoDriver) MongoQuery(ctx context.Context, collection string, filter 
 	if err != nil {
 		return nil, nil, err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	var docs []bson.M
 	if err := cursor.All(ctx, &docs); err != nil {
@@ -246,7 +246,7 @@ func (d *MongoDriver) LoadTableData(ctx context.Context, table string, page, pag
 	if err != nil {
 		return nil, nil, 0, err
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	var docs []bson.M
 	if err := cursor.All(ctx, &docs); err != nil {

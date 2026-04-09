@@ -51,7 +51,7 @@ func (d *MSSQLDriver) ListTables(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var tables []string
 	for rows.Next() {
 		var name string
@@ -85,7 +85,7 @@ func (d *MSSQLDriver) LoadSchema(ctx context.Context, table string) ([]ColInfo, 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var cols []ColInfo
 	for rows.Next() {
 		var c ColInfo
@@ -117,7 +117,7 @@ func (d *MSSQLDriver) LoadFKs(ctx context.Context, table string) ([]FKInfo, erro
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var fks []FKInfo
 	for rows.Next() {
 		var f FKInfo
@@ -158,8 +158,8 @@ func (d *MSSQLDriver) LoadTableData(ctx context.Context, table string, page, pag
 	r, qerr := d.db.QueryContext(ctx, fmt.Sprintf("SELECT COUNT(*) FROM %s", d.QuoteIdent(table)))
 	if qerr == nil {
 		r.Next()
-		r.Scan(&total)
-		r.Close()
+		_ = r.Scan(&total)
+		_ = r.Close()
 	}
 
 	offset := (page - 1) * pageSize
@@ -171,7 +171,7 @@ func (d *MSSQLDriver) LoadTableData(ctx context.Context, table string, page, pag
 	if qerr != nil {
 		return nil, nil, 0, qerr
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	realCols, _ := r.Columns()
 	data, _, _ := ScanRows(r, len(realCols))
@@ -185,8 +185,8 @@ func (d *MSSQLDriver) RowCount(ctx context.Context, table string) (int, error) {
 		return 0, err
 	}
 	rows.Next()
-	rows.Scan(&n)
-	rows.Close()
+	_ = rows.Scan(&n)
+	_ = rows.Close()
 	return n, nil
 }
 
@@ -205,7 +205,7 @@ func (d *MSSQLDriver) LoadIndices(ctx context.Context, table string) ([]IndexInf
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var indices []IndexInfo
 	for rows.Next() {
 		var idx IndexInfo

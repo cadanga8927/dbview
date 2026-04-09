@@ -37,7 +37,7 @@ func LoadSchema(db *sql.DB, tbl string) []ColInfo {
 	if err != nil {
 		return nil
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var cols []ColInfo
 	for rows.Next() {
 		var c ColInfo
@@ -57,7 +57,7 @@ func LoadFKs(db *sql.DB, tbl string) []FKInfo {
 	if err != nil {
 		return nil
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var fks []FKInfo
 	for rows.Next() {
 		var f FKInfo
@@ -74,7 +74,7 @@ func LoadIndices(db *sql.DB, tbl string) []IndexInfo {
 	if err != nil {
 		return nil
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var indices []IndexInfo
 	for rows.Next() {
 		var seq int
@@ -96,7 +96,7 @@ func LoadIndices(db *sql.DB, tbl string) []IndexInfo {
 					idx.Columns = append(idx.Columns, colName)
 				}
 			}
-			cr.Close()
+			_ = cr.Close()
 		}
 		indices = append(indices, idx)
 	}
@@ -177,7 +177,7 @@ func ListTables(db *sql.DB) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var tables []string
 	for rows.Next() {
 		var name string
