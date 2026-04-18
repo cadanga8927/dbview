@@ -823,6 +823,16 @@ func (m Model) updateData(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q":
 		return m.quitOnDoublePress()
+	case "enter":
+		cursor := m.dataTbl.Cursor()
+		filtered := m.filteredRows()
+		sorted := m.sortedRows(filtered)
+		if cursor >= 0 && cursor < len(sorted) {
+			m.detailRows = sorted
+			m.logCursor = cursor
+			m.view = ViewDetail
+		}
+		return m, nil
 	case "esc":
 		m.view = ViewTables
 		return m, nil
@@ -1344,6 +1354,7 @@ func (m Model) updateQueryLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // --- Detail view handler ---
 
 func (m Model) updateDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	n := len(m.detailRows)
 	switch msg.String() {
 	case "esc":
 		m.view = ViewData
@@ -1353,8 +1364,12 @@ func (m Model) updateDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.logCursor--
 		}
 	case "down", "j":
-		if m.logCursor < m.totalRows-1 {
+		if m.logCursor < n-1 {
 			m.logCursor++
+		}
+	case "c":
+		if m.logCursor >= 0 && m.logCursor < n {
+			return m, copyToClipboard(strings.Join(m.detailRows[m.logCursor], " | "))
 		}
 	case "q":
 		return m.quitOnDoublePress()

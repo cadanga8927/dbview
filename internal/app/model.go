@@ -76,6 +76,7 @@ type Model struct {
 	logExpand     bool
 	mouseOn       bool
 	lastQuitPress time.Time
+	detailRows    [][]string
 }
 
 // New creates a new Model by opening the given database.

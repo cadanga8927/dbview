@@ -33,6 +33,7 @@ func (m Model) renderHelpNew() string {
 		"DATA VIEW",
 		"  ←→ / hl      Select column",
 		"  ↑↓           Scroll rows",
+		"  enter        Row detail (full fields)",
 		"  1-9          Sort by column N",
 		"  e            Edit cell",
 		"  x            Delete row",

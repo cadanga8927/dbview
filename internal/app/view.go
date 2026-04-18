@@ -105,7 +105,7 @@ func (m Model) viewTitle() string {
 	case ViewQueryLog:
 		return "Query Log"
 	case ViewDetail:
-		return fmt.Sprintf("Detail · %s (%d/%d)", m.activeTbl, m.logCursor+1, m.totalRows)
+		return fmt.Sprintf("Detail · %s (%d/%d)", m.activeTbl, m.logCursor+1, len(m.detailRows))
 	default:
 		return "dbview"
 	}
@@ -321,7 +321,7 @@ func (m Model) renderStatusBar() string {
 	case ViewTables:
 		hints = []string{"↑↓", "enter", "s schema", "x drop", "F flush", "D stats", "/ sql", "r reload"}
 	case ViewData:
-		hints = []string{"←→ col", "↑↓ scroll", "1-9 sort", "e edit", "x del", "d dup", "a add", "I import", "E export", "c cell", "C row", "[ ] page", "ctrl+f filter", "r reload", "s schema", "/ sql"}
+		hints = []string{"←→ col", "↑↓ scroll", "enter detail", "1-9 sort", "e edit", "x del", "d dup", "a add", "I import", "E export", "c cell", "C row", "[ ] page", "ctrl+f filter", "r reload", "s schema", "/ sql"}
 	case ViewQuery:
 		hints = []string{"↑↓ history", "enter exec", "esc back"}
 	case ViewSearch:
@@ -790,35 +790,76 @@ func (m Model) renderQueryLog() string {
 
 func (m Model) renderDetail() string {
 	cl := m.c()
-	var b strings.Builder
-	b.WriteString(m.renderHeaderBar())
-	b.WriteString("\n")
-	if m.logCursor >= 0 && m.logCursor < len(m.allRows) {
-		row := m.allRows[m.logCursor]
-		maxNameW := 0
-		for _, c := range m.dataCols {
-			if len(c) > maxNameW {
-				maxNameW = len(c)
-			}
-		}
-		for i, col := range m.dataCols {
-			val := ""
-			if i < len(row) {
-				val = row[i]
-			}
-			nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(cl.Accent)).Bold(true).Width(maxNameW + 2)
-			valStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(cl.White))
-			b.WriteString(nameStyle.Render(col + " :"))
-			b.WriteString(valStyle.Render(" " + val))
-			b.WriteString("\n")
-		}
-	} else {
-		b.WriteString(theme.DimStyle(cl).Render(" No data for this row."))
-		b.WriteString("\n")
+
+	// --- Header ---
+	header := m.renderHeaderBar()
+
+	if m.logCursor < 0 || m.logCursor >= len(m.detailRows) {
+		emptyMsg := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(cl.Dim)).
+			Align(lipgloss.Center).
+			Width(m.width).
+			Height(m.height - 4).
+			Render("No data for this row.")
+		return lipgloss.JoinVertical(lipgloss.Top, header, emptyMsg)
 	}
-	b.WriteString("\n")
-	b.WriteString(theme.HelpStyle(cl).Render(" ↑↓ navigate rows · esc back · ? help · q×2 quit"))
-	return b.String()
+
+	row := m.detailRows[m.logCursor]
+
+	// --- Build field list ---
+	maxNameW := 0
+	for _, c := range m.dataCols {
+		if len(c) > maxNameW {
+			maxNameW = len(c)
+		}
+	}
+
+	var lines []string
+	for i, col := range m.dataCols {
+		val := ""
+		if i < len(row) {
+			val = row[i]
+		}
+		nameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(cl.Accent)).Bold(true).Width(maxNameW + 2)
+		valStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(cl.White))
+		lines = append(lines, nameStyle.Render(col+" :")+valStyle.Render(" "+val))
+	}
+
+	contentBlock := lipgloss.NewStyle().
+		Width(m.width).
+		Align(lipgloss.Center).
+		Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
+
+	// --- Navigation hint ---
+	posLabel := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(cl.Dim)).
+		Width(m.width).
+		Align(lipgloss.Center).
+		Render(fmt.Sprintf("Row %d/%d", m.logCursor+1, len(m.detailRows)))
+
+	helpBar := theme.HelpStyle(cl).Render(" ↑↓ navigate rows · esc back · c copy row · ? help · q×2 quit")
+
+	// --- Assemble with vertical centering ---
+	// Available height for content: total height minus header(1) minus pos(1) minus help(1) minus margins(2)
+	contentH := m.height - 5
+	if contentH < 3 {
+		contentH = 3
+	}
+	padTop := (contentH - len(lines)) / 2
+	if padTop < 0 {
+		padTop = 0
+	}
+	padBlock := lipgloss.NewStyle().Height(padTop).Width(m.width).Render("")
+
+	return lipgloss.JoinVertical(lipgloss.Top,
+		header,
+		padBlock,
+		posLabel,
+		"",
+		contentBlock,
+		"",
+		helpBar,
+	)
 }
 
 // --- Dialog renderer ---
