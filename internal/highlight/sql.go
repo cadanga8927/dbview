@@ -312,24 +312,6 @@ func isOperatorRune(r rune) bool {
 	return false
 }
 
-// colorForToken returns the theme color string for a given token type.
-func colorForToken(typ tokenType, cl theme.Colors) string {
-	switch typ {
-	case tokKeyword:
-		return cl.Accent
-	case tokString:
-		return cl.Ok
-	case tokNumber:
-		return cl.Warn
-	case tokOperator:
-		return cl.Dim
-	case tokComment:
-		return cl.Dim
-	default:
-		return cl.White
-	}
-}
-
 // Highlight tokenizes the query, applies syntax-aware coloring, and inserts a
 // styled cursor at the given rune position. The driverKind selects the keyword
 // set ("sqlite", "mysql", "postgresql", "mongodb", "redis").
@@ -343,6 +325,29 @@ func Highlight(query string, cursor int, cl theme.Colors, driverKind string) str
 	}
 	if cursor > len(runes) {
 		cursor = len(runes)
+	}
+
+	// Pre-build styles per token type to avoid per-token allocation.
+	tokStyles := [5]lipgloss.Style{
+		lipgloss.NewStyle().Foreground(lipgloss.Color(cl.White)),
+		lipgloss.NewStyle().Foreground(lipgloss.Color(cl.Accent)),
+		lipgloss.NewStyle().Foreground(lipgloss.Color(cl.Ok)),
+		lipgloss.NewStyle().Foreground(lipgloss.Color(cl.Warn)),
+		lipgloss.NewStyle().Foreground(lipgloss.Color(cl.Dim)),
+	}
+	styleFor := func(typ tokenType) lipgloss.Style {
+		switch typ {
+		case tokKeyword:
+			return tokStyles[1]
+		case tokString:
+			return tokStyles[2]
+		case tokNumber:
+			return tokStyles[3]
+		case tokOperator, tokComment:
+			return tokStyles[4]
+		default:
+			return tokStyles[0]
+		}
 	}
 
 	cursorStyle := lipgloss.NewStyle().
@@ -359,8 +364,6 @@ func Highlight(query string, cursor int, cl theme.Colors, driverKind string) str
 		tokStart := runeOffset
 		tokEnd := runeOffset + tokLen
 
-		color := colorForToken(tok.typ, cl)
-
 		if cursor >= tokStart && cursor < tokEnd {
 			// Cursor falls inside this token.
 			localPos := min(max(cursor-tokStart, 0), tokLen)
@@ -370,16 +373,15 @@ func Highlight(query string, cursor int, cl theme.Colors, driverKind string) str
 			after := string(tokRunes[localPos+1:])
 
 			if before != "" {
-				b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Render(before))
+				b.WriteString(styleFor(tok.typ).Render(before))
 			}
 			b.WriteString(cursorStyle.Render(ch))
 			if after != "" {
-				b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Render(after))
+				b.WriteString(styleFor(tok.typ).Render(after))
 			}
 		} else {
-			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Render(tok.text))
+			b.WriteString(styleFor(tok.typ).Render(tok.text))
 		}
-
 		runeOffset = tokEnd
 	}
 
