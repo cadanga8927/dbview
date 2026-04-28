@@ -19,7 +19,7 @@ import (
 	"github.com/pageton/dbview/internal/db"
 )
 
-var version = "0.1.9"
+var version = "0.2.0"
 
 const releaseAPIURL = "https://api.github.com/repos/pageton/dbview/releases/latest"
 
