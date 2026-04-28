@@ -64,6 +64,8 @@ func isPrintable(data []byte) bool {
 }
 
 // formatJSON attempts to pretty-print a JSON string.
+var indentSpaces = strings.Repeat("  ", 32)
+
 func formatJSON(s string) string {
 	var buf strings.Builder
 	indent := 0
@@ -75,13 +77,13 @@ func formatJSON(s string) string {
 			if !inStr {
 				buf.WriteString("\n")
 				indent++
-				buf.WriteString(strings.Repeat("  ", indent))
+				buf.WriteString(indentSpaces[:indent*2])
 			}
 		case '}', ']':
 			if !inStr {
 				buf.WriteString("\n")
 				indent--
-				buf.WriteString(strings.Repeat("  ", indent))
+				buf.WriteString(indentSpaces[:indent*2])
 			}
 			buf.WriteRune(r)
 		case '"':
@@ -91,7 +93,7 @@ func formatJSON(s string) string {
 			buf.WriteRune(r)
 			if !inStr {
 				buf.WriteString("\n")
-				buf.WriteString(strings.Repeat("  ", indent))
+				buf.WriteString(indentSpaces[:indent*2])
 			}
 		default:
 			buf.WriteRune(r)
@@ -105,14 +107,18 @@ func formatJSON(s string) string {
 	return result
 }
 
-// hexDump formats binary data as a hex dump.
+const hexTable = "0123456789abcdef"
+
 func hexDump(data []byte) string {
-	var parts []string
 	limit := min(len(data), 64)
+	buf := make([]byte, 0, limit*3-1)
 	for i := range limit {
-		parts = append(parts, fmt.Sprintf("%02x", data[i]))
+		if i > 0 {
+			buf = append(buf, ' ')
+		}
+		buf = append(buf, hexTable[data[i]>>4], hexTable[data[i]&0x0f])
 	}
-	s := strings.Join(parts, " ")
+	s := string(buf)
 	if len(data) > 64 {
 		s += " ..."
 	}
